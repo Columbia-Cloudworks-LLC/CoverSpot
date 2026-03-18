@@ -35,7 +35,7 @@ Improve relevance quality, moderation robustness, reliability, and operational e
 
 ### 5.2 Moderation
 
-- Introduce `variant_flags` with one-flag-per-user enforcement.
+- Introduce `variant_flags` table: `(id, variant_id, user_id, reason, created_at)` with unique `(variant_id, user_id)` to enforce one flag per user. This table is deferred from Phase 1; MVP stores rejected status without community flagging.
 - Support moderator override (`rejected` -> `review`/`active`) with audit trail.
 - Add abuse controls (rate limits or trust-weighted moderation).
 
