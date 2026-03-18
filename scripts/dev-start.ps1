@@ -82,20 +82,16 @@ try {
   $spotifyScopes = 'playlist-read-private playlist-read-collaborative user-library-read playlist-modify-public playlist-modify-private user-read-private user-read-email streaming'
 
   $projectEnvLines = @(
-    '# Supabase (client-safe key can be exposed in frontend)',
-    ('SUPABASE_URL=' + (Get-EnvValue -Key 'SUPABASE_URL' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SUPABASE_URL'))),
-    ('SUPABASE_ANON_KEY=' + (Get-EnvValue -Key 'SUPABASE_ANON_KEY' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SUPABASE_ANON_KEY'))),
+    '# Browser-safe variables (exposed to client bundle via NEXT_PUBLIC_ prefix)',
+    ('NEXT_PUBLIC_SUPABASE_URL=' + (Get-EnvValue -Key 'SUPABASE_URL' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SUPABASE_URL'))),
+    ('NEXT_PUBLIC_SUPABASE_ANON_KEY=' + (Get-EnvValue -Key 'SUPABASE_ANON_KEY' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SUPABASE_ANON_KEY'))),
+    ('NEXT_PUBLIC_SPOTIFY_SCOPES=' + $spotifyScopes),
     '',
-    '# Spotify OAuth',
+    '# Server-only variables (no NEXT_PUBLIC_ prefix, never in browser bundle)',
+    ('SUPABASE_SERVICE_ROLE_KEY=' + (Get-EnvValue -Key 'SUPABASE_SERVICE_ROLE_KEY' -Primary $projectMap -Secondary $functionsMap)),
     ('SPOTIFY_CLIENT_ID=' + (Get-EnvValue -Key 'SPOTIFY_CLIENT_ID' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SPOTIFY_CLIENT_ID'))),
     ('SPOTIFY_CLIENT_SECRET=' + (Get-EnvValue -Key 'SPOTIFY_CLIENT_SECRET' -Primary $projectMap -Secondary $functionsMap)),
-    ('SPOTIFY_REDIRECT_URI=' + (Get-EnvValue -Key 'SPOTIFY_REDIRECT_URI' -Primary $projectMap -Secondary $functionsMap -Aliases @('NEXT_PUBLIC_SPOTIFY_REDIRECT_URI'))),
-    ('SPOTIFY_SCOPES=' + $spotifyScopes),
-    '',
-    '# YouTube Data API',
     ('YOUTUBE_API_KEY=' + (Get-EnvValue -Key 'YOUTUBE_API_KEY' -Primary $projectMap -Secondary $functionsMap)),
-    '',
-    '# Optional AI validation',
     ('GEMINI_API_KEY=' + (Get-EnvValue -Key 'GEMINI_API_KEY' -Primary $projectMap -Secondary $functionsMap))
   )
 
