@@ -1,0 +1,8 @@
+# Environment Files
+.env
+.env.local
+supabase/functions/.env
+supabase/functions/.env.local
+
+# IDE Files
+.vscode
