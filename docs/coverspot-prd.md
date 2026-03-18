@@ -29,8 +29,10 @@ CoverSpot is a web application that connects to a user's Spotify account, syncs 
 
 ### 3.1 Authentication and Permissions
 
-- Spotify OAuth is required before any app access.
-- Required scopes include read access for playlists/library and write access for playlist mutation.
+- Spotify is the sole authentication provider. Sign-in uses Supabase Auth's built-in Spotify OAuth provider (`signInWithOAuth({ provider: 'spotify' })`).
+- Supabase Auth handles the OAuth dance, session creation, and `auth.users` row management. A custom `public.users` table linked via `auth.uid()` stores Spotify-specific tokens for proactive server-side refresh.
+- The Spotify redirect URI registered in the Spotify Developer Dashboard must point to Supabase Auth's callback endpoint (`https://<project-ref>.supabase.co/auth/v1/callback` for remote, `http://127.0.0.1:54321/auth/v1/callback` for local Supabase).
+- Required OAuth scopes: `playlist-read-private`, `playlist-read-collaborative`, `user-library-read`, `playlist-modify-public`, `playlist-modify-private`, `user-read-private`, `user-read-email`, `streaming`.
 - Session invalidation and re-auth are required when token refresh fails or scopes are revoked.
 - Premium status must be checked for Spotify Web Playback SDK usage; if unavailable, fallback discovery still works.
 
@@ -70,10 +72,13 @@ CoverSpot is a web application that connects to a user's Spotify account, syncs 
 
 ## 4. Tech Stack Core
 
+- **Frontend:** Next.js (App Router) with TypeScript.
+- **Web Hosting:** Vercel for Next.js deployments and environment management.
 - **Database & Backend:** Supabase (PostgreSQL for users, playlists, track cache, variant relationships), `pg_cron` and `pg_net` for async orchestration.
 - **External APIs:** Spotify Web API (auth, playlists, search, mutation), YouTube Data API v3 (search and metadata).
 - **Playback Integration:** Spotify Web Playback SDK, YouTube IFrame Player API.
-- **Compute:** Deno Edge Functions for orchestration, token handling, and validation.
+- **Compute:** Supabase Edge Functions (Deno) for orchestration, token handling, and validation.
+- **Required Extensions:** `pg_cron` and `pg_net` must be enabled in Supabase for background job scheduling and async HTTP calls from within Postgres.
 - **AI Filtering:** Cost-efficient asynchronous model pass (for example Gemini Flash class) for periodic semantic validation.
 - **Caching:** Supabase Smart CDN edge caching to minimize egress and quota consumption.
 
@@ -83,9 +88,11 @@ The schema uses UUIDs, is normalized to 3NF, and maintains a global variant know
 
 ### 5.1 `users` (Identity and Session Store)
 
+This table extends Supabase Auth's `auth.users` with Spotify-specific fields. The `id` column references `auth.users.id` directly (set on insert via `auth.uid()`). Spotify provider tokens from the initial OAuth sign-in are copied here so that Edge Functions can proactively refresh them server-side (Spotify tokens expire every 3600 seconds).
+
 | Column Name | Data Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
-| id | UUID | PK, default `uuid_generate_v4()` | Linked to `auth.users`. |
+| id | UUID | PK, references `auth.users(id)` ON DELETE CASCADE | Set to `auth.uid()` on insert. |
 | spotify_id | VARCHAR(255) | UNIQUE, NOT NULL | External Spotify user ID. |
 | email | VARCHAR(255) | NOT NULL | User email from OAuth. |
 | spotify_access_token | TEXT | NOT NULL | Current access token (encrypted at rest). |
@@ -97,7 +104,7 @@ The schema uses UUIDs, is normalized to 3NF, and maintains a global variant know
 
 | Column Name | Data Type | Constraints | Description |
 | :--- | :--- | :--- | :--- |
-| id | UUID | PK | Internal playlist ID. |
+| id | UUID | PK, default `gen_random_uuid()` | Internal playlist ID. |
 | user_id | UUID | FK (`users.id`) ON DELETE CASCADE | Playlist owner. |
 | spotify_playlist_id | VARCHAR(255) | UNIQUE, NOT NULL | External Spotify playlist ID. |
 | name | VARCHAR(255) | NOT NULL | Playlist name. |
@@ -145,11 +152,11 @@ This table stores original-to-variant relationships and rejected candidates to a
 | flag_count | INTEGER | DEFAULT 0 | Community moderation count. |
 | discovered_at | TIMESTAMPTZ | DEFAULT NOW() | First discovery timestamp. |
 
-### 5.6 Required Supporting Tables (Missing in original draft)
+### 5.6 Required Supporting Tables
 
-- `variant_flags`: `(id, variant_id, user_id, reason, created_at)` with unique `(variant_id, user_id)` to enforce one flag per user.
-- `mutation_jobs`: records add/swap requests, upstream response status, retries, and final result for auditability.
-- `sync_jobs`: tracks playlist sync execution status, runtime, and retry state.
+- `mutation_jobs`: records add/swap requests, upstream response status, retries, and final result for auditability. **Required in Phase 1.**
+- `sync_jobs`: tracks playlist sync execution status, runtime, and retry state. **Required in Phase 1.**
+- `variant_flags`: `(id, variant_id, user_id, reason, created_at)` with unique `(variant_id, user_id)` to enforce one flag per user. **Introduced in Phase 2** when community moderation is added.
 
 ### 5.7 Row Level Security (RLS) and Governance
 
@@ -162,7 +169,7 @@ This table stores original-to-variant relationships and rejected candidates to a
 
 ### 6.1 Spotify Token and Limit Management
 
-- Token refresh is handled by `/api/refresh-spotify-token` about 5 minutes before expiration.
+- Token refresh is handled by a Supabase Edge Function (`refresh-spotify-token`) triggered proactively about 5 minutes before expiration. The function reads the current refresh token from `public.users`, calls Spotify's token endpoint, and writes the new access/refresh tokens back.
 - On `429`, workers honor `Retry-After` and apply 500-1500ms jitter.
 - Persistent refresh failure triggers secure token purge and user re-auth flow.
 
@@ -310,6 +317,6 @@ This table stores original-to-variant relationships and rejected candidates to a
 
 This PRD remains the source-of-truth overview. Detailed execution for each phase lives in separate docs:
 
-- `CoverSpot Phase 1 - MVP.md`
-- `CoverSpot Phase 2 - Quality and Scale.md`
-- `CoverSpot Phase 3 - Growth and GA.md`
+- `docs/phase-1-mvp.md`
+- `docs/phase-2-quality-and-scale.md`
+- `docs/phase-3-growth-and-ga.md`
