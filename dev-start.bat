@@ -14,6 +14,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PATH%" -RepoRoot "%REPO_ROOT%" -ProjectEnvId "%PROJECT_ENV_ID%" -FunctionsEnvId "%FUNCTIONS_ENV_ID%"
+set "ENV_ONLY_FLAG="
+for %%A in (%*) do (
+  if /i "%%~A"=="--env-only" set "ENV_ONLY_FLAG=-EnvOnly"
+)
+
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_PATH%" -RepoRoot "%REPO_ROOT%" -ProjectEnvId "%PROJECT_ENV_ID%" -FunctionsEnvId "%FUNCTIONS_ENV_ID%" %ENV_ONLY_FLAG%
 set "EXIT_CODE=%ERRORLEVEL%"
 exit /b %EXIT_CODE%
