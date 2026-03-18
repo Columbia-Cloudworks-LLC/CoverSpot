@@ -317,6 +317,6 @@ This table stores original-to-variant relationships and rejected candidates to a
 
 This PRD remains the source-of-truth overview. Detailed execution for each phase lives in separate docs:
 
-- `CoverSpot Phase 1 - MVP.md`
-- `CoverSpot Phase 2 - Quality and Scale.md`
-- `CoverSpot Phase 3 - Growth and GA.md`
+- `docs/phase-1-mvp.md`
+- `docs/phase-2-quality-and-scale.md`
+- `docs/phase-3-growth-and-ga.md`

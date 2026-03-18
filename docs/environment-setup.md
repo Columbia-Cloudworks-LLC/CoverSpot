@@ -233,13 +233,13 @@ supabase start
 
 `supabase start` outputs local URLs and keys:
 
-| Service    | Local URL                          |
-| :--------- | :--------------------------------- |
-| API URL    | `http://127.0.0.1:54321`          |
-| Studio     | `http://127.0.0.1:54323`          |
+| Service    | Local URL |
+| :--------- | :-------- |
+| API URL    | `http://127.0.0.1:54321` |
+| Studio     | `http://127.0.0.1:54323` |
 | DB URL     | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
-| Anon Key   | (printed on start)                 |
-| Service Key| (printed on start)                 |
+| Anon Key   | (printed on start) |
+| Service Key| (printed on start) |
 
 ### Env File Values for Local Development
 
