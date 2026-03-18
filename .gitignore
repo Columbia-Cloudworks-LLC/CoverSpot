@@ -4,5 +4,21 @@
 supabase/functions/.env
 supabase/functions/.env.local
 
+# Supabase Local
+supabase/.temp/
+supabase/.branches/
+
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
 # IDE Files
-.vscode
+.vscode/
+.idea/
+
+# OS Files
+Thumbs.db
+.DS_Store
