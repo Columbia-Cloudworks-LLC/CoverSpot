@@ -70,10 +70,12 @@ CoverSpot is a web application that connects to a user's Spotify account, syncs 
 
 ## 4. Tech Stack Core
 
+- **Frontend:** Next.js (App Router) with TypeScript.
+- **Web Hosting:** Vercel for Next.js deployments and environment management.
 - **Database & Backend:** Supabase (PostgreSQL for users, playlists, track cache, variant relationships), `pg_cron` and `pg_net` for async orchestration.
 - **External APIs:** Spotify Web API (auth, playlists, search, mutation), YouTube Data API v3 (search and metadata).
 - **Playback Integration:** Spotify Web Playback SDK, YouTube IFrame Player API.
-- **Compute:** Deno Edge Functions for orchestration, token handling, and validation.
+- **Compute:** Supabase Edge Functions (Deno) for orchestration, token handling, and validation.
 - **AI Filtering:** Cost-efficient asynchronous model pass (for example Gemini Flash class) for periodic semantic validation.
 - **Caching:** Supabase Smart CDN edge caching to minimize egress and quota consumption.
 

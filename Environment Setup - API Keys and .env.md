@@ -1,6 +1,11 @@
 # CoverSpot Environment Setup: API Keys, Scopes, and `.env` Files
 
-This guide documents every key/secret needed for the CoverSpot MVP, where to create it, which settings to select, and where to store it locally and in Supabase.
+This guide documents every key/secret needed for the CoverSpot MVP, where to create it, which settings to select, and where to store it for the canonical stack:
+
+- Frontend: Next.js (App Router) + TypeScript
+- Hosting: Vercel
+- Backend/DB/Auth: Supabase
+- Server orchestration: Supabase Edge Functions (Deno)
 
 ## 1) What You Need (at a Glance)
 
@@ -12,7 +17,7 @@ Required for MVP:
 
 Optional for MVP (if AI validation is enabled in Phase 1):
 
-- Gemini API key (`GEMINI_API_KEY` or `GOOGLE_API_KEY`)
+- Gemini API key (`GEMINI_API_KEY`)
 
 ---
 
@@ -21,7 +26,7 @@ Optional for MVP (if AI validation is enabled in Phase 1):
 Use two local env files:
 
 1. App/runtime env file (web app + backend runtime)
-   - Path: `.env` (or `.env.local`)
+   - Path: `.env.local` (Next.js default for local overrides)
 2. Supabase Edge Functions env file
    - Path: `supabase/functions/.env`
 
@@ -30,7 +35,7 @@ Why two files?
 - `supabase/functions/.env` is the default local secrets file for Supabase Functions.
 - App-level env and function-level env often overlap, but separating them reduces accidental leakage to client code.
 
-Also add placeholders in `.env.example` and `supabase/functions/.env.example` (safe to commit), while real `.env` files stay uncommitted.
+Also add placeholders in `.env.local.example` and `supabase/functions/.env.example` (safe to commit), while real `.env` files stay uncommitted.
 
 ### `.gitignore` minimum
 
@@ -45,29 +50,22 @@ supabase/functions/.env.local
 
 ## 3) Environment Variables to Define
 
-## A) App/runtime (`.env` or `.env.local`)
+## A) Next.js app/runtime (`.env.local`)
 
 ```env
-# Supabase (client-safe key can be exposed in frontend)
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
+# Public browser-safe variables (Next.js requires NEXT_PUBLIC_ prefix)
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 
-# Spotify OAuth
-SPOTIFY_CLIENT_ID=
-SPOTIFY_CLIENT_SECRET=
-SPOTIFY_REDIRECT_URI=
-SPOTIFY_SCOPES=playlist-read-private playlist-read-collaborative user-library-read playlist-modify-public playlist-modify-private user-read-private user-read-email streaming
-
-# YouTube Data API
-YOUTUBE_API_KEY=
-
-# Optional AI validation
-GEMINI_API_KEY=
+# Spotify client-side OAuth initiation values
+NEXT_PUBLIC_SPOTIFY_CLIENT_ID=
+NEXT_PUBLIC_SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/auth/callback
+NEXT_PUBLIC_SPOTIFY_SCOPES=playlist-read-private playlist-read-collaborative user-library-read playlist-modify-public playlist-modify-private user-read-private user-read-email streaming
 ```
 
 Notes:
 
-- If your frontend framework uses public prefixes (for example `NEXT_PUBLIC_` or `VITE_`), only expose values that are truly public (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and possibly `SPOTIFY_CLIENT_ID`).
+- This file is for browser-safe config only. Do not put server secrets in `.env.local`.
 - Never expose `SPOTIFY_CLIENT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `YOUTUBE_API_KEY`, or `GEMINI_API_KEY` to browser code.
 
 ## B) Supabase Functions local env (`supabase/functions/.env`)
@@ -97,8 +95,8 @@ Where:
 
 What to collect:
 
-- Project URL (`SUPABASE_URL`)
-- `anon` key (or publishable key, depending on your chosen client setup)
+- Project URL (`SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL`)
+- `anon` key (`SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
 - `service_role` key (`SUPABASE_SERVICE_ROLE_KEY`) for Edge Functions only
 
 Critical settings:
@@ -108,19 +106,19 @@ Critical settings:
 
 Set hosted function secrets:
 
-```bash
+```powershell
 supabase secrets set --env-file supabase/functions/.env
 ```
 
 Useful checks:
 
-```bash
+```powershell
 supabase secrets list
 ```
 
 Local function serve with explicit env file:
 
-```bash
+```powershell
 supabase functions serve --env-file supabase/functions/.env
 ```
 
@@ -144,7 +142,7 @@ Required app settings:
 Redirect URI guidance:
 
 - Local example: `http://127.0.0.1:3000/auth/callback`
-- Staging/prod examples: `https://staging.yourdomain.com/auth/callback`, `https://app.yourdomain.com/auth/callback`
+- Production pattern: `https://app.<your-domain>/auth/callback`
 - Redirect URIs must match exactly.
 
 Scopes to request for CoverSpot MVP:
@@ -181,9 +179,7 @@ Setup steps:
 3. Create an API key.
 4. Restrict the key:
    - **API restriction**: limit to YouTube Data API v3.
-   - **Application restriction**:
-     - If browser usage: HTTP referrer restriction (localhost + your domains).
-     - If server/Edge Functions usage: keep server-side only and use IP restrictions if your runtime has stable egress IPs.
+   - **Application restriction**: keep server-side only and use IP restrictions if your runtime has stable egress IPs.
 
 Recommended for CoverSpot:
 
@@ -198,7 +194,7 @@ Where:
 Setup steps:
 
 1. Create key for Gemini API.
-2. Store as `GEMINI_API_KEY` (or `GOOGLE_API_KEY`, but keep naming consistent in code).
+2. Store as `GEMINI_API_KEY`.
 3. Apply key restrictions where available.
 4. Keep usage server-side only.
 
@@ -212,7 +208,7 @@ Security note:
 
 ## Local Dev Checklist
 
-- [ ] `.env` created from `.env.example`
+- [ ] `.env.local` created from `.env.local.example`
 - [ ] `supabase/functions/.env` created from `supabase/functions/.env.example`
 - [ ] Spotify redirect URI for localhost added
 - [ ] Spotify scopes include all MVP scopes above
@@ -233,16 +229,16 @@ Security note:
 - Missing `playlist-modify-private` causes mutation failures on private playlists.
 - Missing `playlist-read-collaborative` hides collaborative playlists.
 - Using Spotify Web Playback without `streaming` scope or without Premium user.
-- Keeping API keys only in local `.env` but forgetting to set hosted Supabase secrets.
+- Keeping API keys only in local function env files but forgetting to set hosted Supabase secrets.
 - Exposing server secrets to client bundles by using public env prefixes.
 
 ---
 
 ## 7) Suggested Next File to Add
 
-Add a committed template file:
+Add committed template files:
 
-- `.env.example`
+- `.env.local.example`
 - `supabase/functions/.env.example`
 
 with blank placeholders matching this guide so onboarding is one command-and-fill.

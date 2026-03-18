@@ -11,7 +11,15 @@ Deliver a usable end-to-end workflow: connect Spotify, sync playlists, discover 
 - Mutation success rate meets baseline target from master PRD.
 - Core observability in place for auth, sync, discovery, and mutation failures.
 
-## 3. In Scope
+## 3. Canonical Stack Baseline (No Variants)
+
+- Frontend: Next.js (App Router) + TypeScript.
+- Web hosting: Vercel.
+- Data/auth: Supabase Postgres + Supabase Auth + RLS.
+- Server orchestration: Supabase Edge Functions (Deno).
+- External integrations: Spotify Web API + YouTube Data API v3.
+
+## 4. In Scope
 
 - Spotify OAuth and required scopes.
 - Playlist sync with `snapshot_id`-aware caching.
@@ -21,14 +29,14 @@ Deliver a usable end-to-end workflow: connect Spotify, sync playlists, discover 
 - Add and swap playlist mutation flows.
 - Basic moderation: store rejected candidates and collapse by default.
 
-## 4. Out of Scope
+## 5. Out of Scope
 
 - Advanced admin moderation console.
 - Sophisticated personalization/ranking models.
 - Multi-region rollout and advanced quota optimization.
 - Social or sharing features.
 
-## 5. Functional Requirements (Phase-Specific)
+## 6. Functional Requirements (Phase-Specific)
 
 ### 5.1 Authentication
 
@@ -59,14 +67,14 @@ Deliver a usable end-to-end workflow: connect Spotify, sync playlists, discover 
 - Swap variant into exact original 0-based position.
 - On snapshot conflict, re-fetch and prompt retry.
 
-## 6. Technical Deliverables
+## 7. Technical Deliverables
 
 - Supabase schema and RLS policies required for MVP entities.
 - Edge Functions for token refresh, sync orchestration, and mutation orchestration.
 - Logging and metrics for failure triage.
 - Core E2E path test coverage.
 
-## 7. Data Model Focus
+## 8. Data Model Focus
 
 - `users`
 - `spotify_playlists`
@@ -76,19 +84,19 @@ Deliver a usable end-to-end workflow: connect Spotify, sync playlists, discover 
 - `mutation_jobs` (minimum audit shape)
 - `sync_jobs` (minimum orchestration shape)
 
-## 8. Testing Requirements
+## 9. Testing Requirements
 
 - Unit tests: query builder, validation logic, ranking order.
 - Integration tests: OAuth session lifecycle, sync idempotency, mutation conflicts.
 - E2E tests: login, discovery, preview, add, swap.
 
-## 9. Exit Criteria
+## 10. Exit Criteria
 
 - All phase success criteria met in staging.
 - No open P0/P1 defects in core journey.
 - Operational runbook exists for quota exhaustion and auth failures.
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 - Final threshold values for variant rejection.
 - Exact stale-cache TTL for variant refresh.
