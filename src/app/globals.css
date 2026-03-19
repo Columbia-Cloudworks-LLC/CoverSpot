@@ -192,3 +192,19 @@
     font-weight: 400;
   }
 }
+
+.landing-hero > .landing-hero-text {
+  transition: opacity 250ms cubic-bezier(0.25, 1, 0.5, 1),
+              transform 250ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.landing-hero:has(button[aria-busy="true"]) > .landing-hero-text {
+  opacity: 0.4;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero > .landing-hero-text {
+    transition-duration: 0.01ms !important;
+  }
+}
