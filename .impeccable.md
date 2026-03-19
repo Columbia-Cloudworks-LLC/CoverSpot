@@ -14,4 +14,5 @@ Mobile-first, content-forward UI inspired by Unsplash's cleanliness, Canva mobil
 - Keep visual hierarchy sharp and content-forward so track/variant decisions feel fast and effortless.
 - Use expressive but controlled styling to signal premium quality without visual noise.
 - Preserve a distinct identity by avoiding Spotify signature cues: neon green (`#1DB954`), Circular typography, and Spotify-like dark card layouts.
+- Exception: the `Login with Spotify` button may use Spotify's official brand styling (including logo, color, and naming) because it is a third-party auth action; keep this styling scoped to that button only.
 - Emphasize performance perception through concise states, clear feedback, and minimal friction at each step.

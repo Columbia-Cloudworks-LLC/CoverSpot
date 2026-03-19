@@ -18,7 +18,7 @@ CoverSpot is a web app for Spotify users. Its core promise: connect your Spotify
 
 The target user is a music listener who manages playlists on Spotify and wants to enrich them with alternate takes of songs they love. Most usage is expected on mobile, but the desktop experience must also hold up.
 
-The product should feel **premium, fast, and effortless** — think of a polished third-party companion app, not a Spotify clone.
+The product should feel **premium, fast, and effortless** — think of a polished third-party companion app, not a Spotify clone. The one intentional exception is the `Login with Spotify` button, which may use Spotify's official brand styling for provider-auth clarity.
 
 ---
 
