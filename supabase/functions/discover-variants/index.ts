@@ -275,7 +275,7 @@ async function searchYouTube(
     const isEmbeddable =
       status !== undefined
         ? status.embeddable && status.privacyStatus === "public"
-        : false;
+        : true;
 
     const row = {
       original_track_id: trackId,
@@ -319,7 +319,10 @@ async function fetchVideoStatuses(
     `https://www.googleapis.com/youtube/v3/videos?${params}`
   );
 
-  if (!res.ok) return statusMap;
+  if (!res.ok) {
+    console.warn("fetchVideoStatuses failed:", res.status, await res.text());
+    return statusMap;
+  }
 
   const data = await res.json();
   for (const item of data.items ?? []) {

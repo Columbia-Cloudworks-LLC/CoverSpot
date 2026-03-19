@@ -80,8 +80,8 @@ export default async function PlaylistDetailPage({
   }
 
   return (
-    <div className="space-y-xl">
-      <div className="space-y-md">
+    <div className="flex flex-col gap-(--space-xl)">
+      <div className="flex flex-col gap-(--space-md)">
         <Button
           render={<Link href="/dashboard" />}
           nativeButton={false}

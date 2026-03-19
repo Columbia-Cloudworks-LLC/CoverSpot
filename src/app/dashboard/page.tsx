@@ -26,7 +26,7 @@ export default async function DashboardPage() {
   const [featuredPlaylist, ...otherPlaylists] = playlists;
 
   return (
-    <div className="space-y-2xl">
+    <div className="flex flex-col gap-(--space-2xl)">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-heading">Your Playlists</h1>
@@ -42,7 +42,7 @@ export default async function DashboardPage() {
       </div>
 
       {playlists.length > 0 ? (
-        <div className="space-y-md">
+        <div className="flex flex-col gap-(--space-md)">
           {featuredPlaylist && (
             <PlaylistCard
               key={featuredPlaylist.id}

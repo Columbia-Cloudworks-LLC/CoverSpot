@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,7 @@ export function VariantDiscoveryPanel({
   const [searched, setSearched] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
   const [customType, setCustomType] = useState("");
+  const requestIdRef = useRef(0);
 
   const discover = async (type?: string) => {
     const searchType =
@@ -64,6 +65,8 @@ export function VariantDiscoveryPanel({
     if (!searchType) {
       return;
     }
+
+    const currentRequestId = ++requestIdRef.current;
     setLoading(true);
     setSearched(true);
 
@@ -76,6 +79,8 @@ export function VariantDiscoveryPanel({
         }
       );
 
+      if (currentRequestId !== requestIdRef.current) return;
+
       if (error) {
         toast.error("Discovery failed");
         console.error("Discovery error:", error);
@@ -85,10 +90,13 @@ export function VariantDiscoveryPanel({
       setVariants(data.variants ?? []);
       setRejected(data.rejected ?? []);
     } catch (err) {
+      if (currentRequestId !== requestIdRef.current) return;
       toast.error("Discovery failed unexpectedly");
       console.error(err);
     } finally {
-      setLoading(false);
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 

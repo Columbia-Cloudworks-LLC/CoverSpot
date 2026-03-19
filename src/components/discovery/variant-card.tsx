@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Play, EyeOff } from "lucide-react";
+import { Play, EyeOff, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -141,6 +141,21 @@ export function VariantCard({
             <YouTubePlayer videoId={variant.platform_id} />
           ) : variant.platform === "spotify" ? (
             <SpotifyPreview trackId={variant.platform_id} />
+          ) : variant.platform === "youtube" ? (
+            <div className="space-y-2">
+              <p className="text-caption text-foreground/75">
+                Embedded playback is not available for this video.
+              </p>
+              <a
+                href={`https://www.youtube.com/watch?v=${variant.platform_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-caption font-medium text-primary hover:underline"
+              >
+                Watch on YouTube
+                <ExternalLink className="size-3" />
+              </a>
+            </div>
           ) : (
             <p className="text-caption text-foreground/75">
               Playback not available for this variant.

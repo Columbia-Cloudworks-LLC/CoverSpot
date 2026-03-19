@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-2xl">
+    <div className="flex flex-col gap-(--space-2xl)">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
           <Skeleton className="h-8 w-40" />
@@ -11,7 +11,7 @@ export default function DashboardLoading() {
         <Skeleton className="h-11 w-36 shrink-0" />
       </div>
 
-      <div className="space-y-md">
+      <div className="flex flex-col gap-(--space-md)">
         {/* Featured playlist card */}
         <Skeleton className="h-32 rounded-2xl" />
 
