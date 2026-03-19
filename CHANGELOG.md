@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Declare all Edge Functions in `supabase/config.toml` so Supabase GitHub/Branching auto-deploys them (avoids “only Functions declared in config.toml” warnings).
+
 ## [0.1.0] - 2026-03-19
 
 ### Added
