@@ -135,6 +135,10 @@ CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 supabase secrets set --env-file supabase/functions/.env
 ```
 
+**Edge Functions in `config.toml` (hosted branching / GitHub integration):**
+
+Supabase only auto-deploys Edge Functions that are declared in `supabase/config.toml` under `[functions.<function-folder-name>]` (with optional `verify_jwt`). CoverSpot lists all app functions there: `refresh-spotify-token`, `sync-playlists`, `discover-variants`, `mutate-playlist`. If you add a new function folder under `supabase/functions/`, add a matching `[functions....]` block or preview/production deploys will skip it and the dashboard may show a warning.
+
 **Useful checks:**
 
 ```powershell

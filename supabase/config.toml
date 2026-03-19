@@ -316,6 +316,22 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Edge Functions — declare each function so Supabase GitHub integration / Branching
+# auto-deploys them to preview branches and production. Undeclared folders under
+# supabase/functions/ are skipped with a dashboard warning.
+# https://supabase.com/docs/guides/deployment/branching/github-integration
+[functions.refresh-spotify-token]
+verify_jwt = true
+
+[functions.sync-playlists]
+verify_jwt = true
+
+[functions.discover-variants]
+verify_jwt = true
+
+[functions.mutate-playlist]
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 54327

@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   }
 
   const cookieStore = await cookies();
+  const pendingCookies: Array<{name: string; value: string; options: Record<string, unknown>}> = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,9 +23,10 @@ export async function GET(request: NextRequest) {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+            pendingCookies.push({ name, value, options: options as Record<string, unknown> });
+          });
         },
       },
     }
@@ -71,5 +73,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.redirect(`${origin}/dashboard`);
+  const response = NextResponse.redirect(`${origin}/dashboard`);
+  pendingCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options);
+  });
+
+  return response;
 }

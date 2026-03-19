@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -90,18 +91,20 @@ export function MutationButtons({
         size="sm"
         onClick={() => handleMutation("add")}
         disabled={mutating}
-        className="text-xs cursor-pointer"
+        className="cursor-pointer min-h-11 gap-1.5"
       >
-        Add
+        {mutating && lastAction === "add" && <Loader2 className="size-3.5 animate-spin" />}
+        {mutating && lastAction === "add" ? "Adding..." : "Add"}
       </Button>
       <Button
         variant="default"
         size="sm"
         onClick={() => handleMutation("swap")}
         disabled={mutating}
-        className="text-xs cursor-pointer"
+        className="cursor-pointer min-h-11 gap-1.5"
       >
-        Swap
+        {mutating && lastAction === "swap" && <Loader2 className="size-3.5 animate-spin" />}
+        {mutating && lastAction === "swap" ? "Swapping..." : "Swap"}
       </Button>
 
       <Dialog open={showConflict} onOpenChange={setShowConflict}>

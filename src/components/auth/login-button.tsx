@@ -1,30 +1,77 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
-export function LoginButton() {
+const ERROR_MESSAGES: Record<string, string> = {
+  no_code: "Authorization was not completed. Please try again.",
+  auth_failed: "Could not sign in with Spotify. Please try again.",
+};
+
+export function LoginButton({ errorCode }: { errorCode?: string }) {
+  const [isConnecting, setIsConnecting] = useState(false);
+  const hasShownError = useRef(false);
+
+  useEffect(() => {
+    if (errorCode && ERROR_MESSAGES[errorCode] && !hasShownError.current) {
+      hasShownError.current = true;
+      toast.error(ERROR_MESSAGES[errorCode]);
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete("error");
+      window.history.replaceState({}, "", url.pathname);
+    }
+  }, [errorCode]);
+
   const handleLogin = async () => {
-    const supabase = createClient();
-    const scopes = process.env.NEXT_PUBLIC_SPOTIFY_SCOPES ?? "";
+    if (isConnecting) return;
+    setIsConnecting(true);
 
-    await supabase.auth.signInWithOAuth({
-      provider: "spotify",
-      options: {
-        scopes,
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+    try {
+      const supabase = createClient();
+      const scopes = process.env.NEXT_PUBLIC_SPOTIFY_SCOPES ?? "";
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "spotify",
+        options: {
+          scopes,
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        toast.error("Could not connect to Spotify. Please try again.");
+        setIsConnecting(false);
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+      setIsConnecting(false);
+    }
   };
 
   return (
     <Button
       size="lg"
       onClick={handleLogin}
-      className="gap-2 bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold text-base px-8 py-6 cursor-pointer"
+      disabled={isConnecting}
+      aria-busy={isConnecting || undefined}
+      className={cn(
+        "gap-2 text-black font-semibold text-base px-8 py-6 cursor-pointer",
+        "bg-[#1DB954] hover:bg-[#1ed760]",
+        "duration-200 ease-[cubic-bezier(0.25,1,0.5,1)]",
+        "active:scale-[0.97]"
+      )}
     >
-      <SpotifyIcon />
-      Login with Spotify
+      {isConnecting ? (
+        <Loader2 className="size-5 animate-spin" />
+      ) : (
+        <SpotifyIcon />
+      )}
+      {isConnecting ? "Connecting\u2026" : "Login with Spotify"}
     </Button>
   );
 }
