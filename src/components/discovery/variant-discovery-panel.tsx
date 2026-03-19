@@ -159,7 +159,7 @@ export function VariantDiscoveryPanel({
             <TabsTrigger
               key={type}
               value={type}
-              className="capitalize text-caption h-9 cursor-pointer flex-1 min-w-18"
+              className="capitalize text-caption h-9 cursor-pointer flex-1 min-w-[4.5rem]"
             >
               {type}
             </TabsTrigger>
