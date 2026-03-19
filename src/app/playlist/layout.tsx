@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { DashboardNav } from "@/components/dashboard-nav";
 
-export default async function DashboardLayout({
+export default async function PlaylistLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -19,7 +19,7 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen flex flex-col">
       <DashboardNav userEmail={user.email ?? ""} />
-      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
         {children}
       </main>
     </div>

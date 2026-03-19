@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface PlaylistCardProps {
   id: string;
@@ -9,6 +10,7 @@ interface PlaylistCardProps {
   imageUrl: string | null;
   lastSyncedAt: string;
   isCollaborative: boolean;
+  featured?: boolean;
 }
 
 export function PlaylistCard({
@@ -18,42 +20,72 @@ export function PlaylistCard({
   imageUrl,
   lastSyncedAt,
   isCollaborative,
+  featured = false,
 }: PlaylistCardProps) {
   const syncedAgo = getRelativeTime(lastSyncedAt);
 
   return (
-    <Link href={`/playlist/${id}`}>
-      <Card className="hover:bg-accent/50 transition-colors cursor-pointer h-full">
-        <CardHeader className="flex flex-row items-start gap-4 p-4">
+    <Link
+      href={`/playlist/${id}`}
+      className={cn(
+        "group block transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        featured
+          ? "rounded-2xl border border-border bg-card/80 hover:bg-accent/40"
+          : "border-b border-border/70 py-3 hover:bg-accent/30 px-2 -mx-2 rounded-lg"
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-start gap-4 p-3",
+          featured ? "sm:p-5" : "p-0"
+        )}
+      >
           {imageUrl ? (
-            <img
+            <Image
               src={imageUrl}
               alt={name}
-              className="h-16 w-16 rounded-md object-cover shrink-0"
+              width={featured ? 80 : 48}
+              height={featured ? 80 : 48}
+              sizes={featured ? "80px" : "48px"}
+              loading={featured ? "eager" : "lazy"}
+              className={cn(
+                "rounded-md object-cover shrink-0",
+                featured ? "h-20 w-20" : "h-12 w-12"
+              )}
             />
           ) : (
-            <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center shrink-0">
+            <div
+              className={cn(
+                "rounded-md bg-muted flex items-center justify-center shrink-0",
+                featured ? "h-20 w-20" : "h-12 w-12"
+              )}
+            >
               <span className="text-2xl text-muted-foreground">♫</span>
             </div>
           )}
-          <div className="flex flex-col gap-1 min-w-0">
-            <CardTitle className="text-base truncate">{name}</CardTitle>
-            <CardDescription className="text-sm">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
+            <h3
+              className={cn(
+                featured ? "text-subheading line-clamp-2" : "text-body line-clamp-1 sm:line-clamp-2"
+              )}
+            >
+              {name}
+            </h3>
+            <p className="text-meta text-muted-foreground">
               {totalTracks} tracks
-            </CardDescription>
+            </p>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">
+              <span className="text-caption text-foreground/75 hidden sm:inline">
                 Synced {syncedAgo}
               </span>
               {isCollaborative && (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="secondary" className="text-caption">
                   Collaborative
                 </Badge>
               )}
             </div>
           </div>
-        </CardHeader>
-      </Card>
+        </div>
     </Link>
   );
 }

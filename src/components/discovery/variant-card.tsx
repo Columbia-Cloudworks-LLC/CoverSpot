@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
+import { Play, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { YouTubePlayer } from "@/components/playback/youtube-player";
 import { SpotifyPreview } from "@/components/playback/spotify-preview";
 import { MutationButtons } from "@/components/mutation/mutation-buttons";
@@ -50,34 +53,38 @@ export function VariantCard({
 
   return (
     <div
-      className={`rounded-md border border-border p-3 space-y-2 ${
+      className={`rounded-xl border border-border p-3 space-y-3 ${
         isRejected ? "opacity-60" : ""
       }`}
     >
       <div className="flex items-start gap-3">
         {variant.thumbnail_url ? (
-          <img
+          <Image
             src={variant.thumbnail_url}
             alt=""
+            width={48}
+            height={48}
+            sizes="48px"
+            loading="lazy"
             className="h-12 w-12 rounded object-cover shrink-0"
           />
         ) : (
           <div className="h-12 w-12 rounded bg-muted shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{variant.title}</p>
-          <p className="text-xs text-muted-foreground truncate">
+          <p className="text-body font-medium line-clamp-2">{variant.title}</p>
+          <p className="text-caption text-foreground/75 truncate">
             {variant.artist_or_channel}
           </p>
           <div className="flex items-center gap-2 mt-1">
             <Badge
               variant={variant.platform === "spotify" ? "default" : "secondary"}
-              className="text-xs"
+              className="text-caption"
             >
               {variant.platform === "spotify" ? "Spotify" : "YouTube"}
             </Badge>
             {durationStr && (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-caption text-foreground/75">
                 {durationStr}
               </span>
             )}
@@ -86,17 +93,27 @@ export function VariantCard({
       </div>
 
       {isRejected && variant.rejection_reason && (
-        <p className="text-xs text-destructive">{variant.rejection_reason}</p>
+        <p className="text-caption text-destructive">{variant.rejection_reason}</p>
       )}
 
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
+          variant={variant.platform === "youtube" ? "default" : "secondary"}
           size="sm"
           onClick={() => setShowPlayer(!showPlayer)}
-          className="text-xs cursor-pointer"
+          className="cursor-pointer min-h-11 gap-1.5"
         >
-          {showPlayer ? "Hide" : "Preview"}
+          {showPlayer ? (
+            <>
+              <EyeOff className="size-3.5" />
+              Hide
+            </>
+          ) : (
+            <>
+              <Play className="size-3.5" />
+              Preview
+            </>
+          )}
         </Button>
 
         {!isRejected && variant.platform === "spotify" && (
@@ -111,9 +128,11 @@ export function VariantCard({
         )}
 
         {!isRejected && variant.platform === "youtube" && (
-          <span className="text-xs text-muted-foreground ml-auto">
-            Preview only
-          </span>
+          <Tooltip content="YouTube variants can be previewed but not added to your Spotify playlist.">
+            <span className="text-caption text-foreground/75 ml-auto cursor-default underline decoration-dotted underline-offset-2">
+              Preview only
+            </span>
+          </Tooltip>
         )}
       </div>
 
@@ -124,7 +143,7 @@ export function VariantCard({
           ) : variant.platform === "spotify" ? (
             <SpotifyPreview trackId={variant.platform_id} />
           ) : (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-foreground/75">
               Playback not available for this variant.
             </p>
           )}

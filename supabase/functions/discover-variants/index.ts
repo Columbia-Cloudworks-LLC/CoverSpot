@@ -26,6 +26,12 @@ interface YouTubeSearchItem {
   };
 }
 
+interface YouTubeVideoStatus {
+  embeddable: boolean;
+  privacyStatus: string;
+  uploadStatus: string;
+}
+
 Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
@@ -233,9 +239,11 @@ async function searchYouTube(
   const items: YouTubeSearchItem[] = data.items ?? [];
   const variants: Array<Record<string, unknown>> = [];
 
+  const freshVideoIds = [] as string[];
+  const freshItemsByVideoId = new Map<string, YouTubeSearchItem>();
+
   for (const item of items) {
     const videoId = item.id.videoId;
-
     const { data: existing } = await admin
       .from("track_variants")
       .select("id")
@@ -249,21 +257,35 @@ async function searchYouTube(
         .eq("id", existing.id)
         .single();
       if (full) variants.push(full);
-      continue;
+    } else {
+      freshVideoIds.push(videoId);
+      freshItemsByVideoId.set(videoId, item);
     }
+  }
 
+  const videoStatuses = await fetchVideoStatuses(freshVideoIds, apiKey);
+
+  for (const videoId of freshVideoIds) {
+    const item = freshItemsByVideoId.get(videoId)!;
     const snippet = item.snippet;
-    const rejectionReason = applyHardFilters(snippet.title);
+    const decodedTitle = decodeHtmlEntities(snippet.title);
+    const rejectionReason = applyHardFilters(decodedTitle);
+
+    const status = videoStatuses.get(videoId);
+    const isEmbeddable =
+      status !== undefined
+        ? status.embeddable && status.privacyStatus === "public"
+        : false;
 
     const row = {
       original_track_id: trackId,
       platform: "youtube" as const,
       platform_id: videoId,
       variant_type: variantType,
-      title: snippet.title,
-      artist_or_channel: snippet.channelTitle,
+      title: decodedTitle,
+      artist_or_channel: decodeHtmlEntities(snippet.channelTitle),
       thumbnail_url: snippet.thumbnails?.medium?.url ?? null,
-      embeddable: true,
+      embeddable: isEmbeddable,
       status: rejectionReason ? ("rejected" as const) : ("active" as const),
       rejection_reason: rejectionReason,
     };
@@ -278,6 +300,45 @@ async function searchYouTube(
   }
 
   return variants;
+}
+
+async function fetchVideoStatuses(
+  videoIds: string[],
+  apiKey: string
+): Promise<Map<string, YouTubeVideoStatus>> {
+  const statusMap = new Map<string, YouTubeVideoStatus>();
+  if (videoIds.length === 0) return statusMap;
+
+  const params = new URLSearchParams({
+    part: "status",
+    id: videoIds.join(","),
+    key: apiKey,
+  });
+
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?${params}`
+  );
+
+  if (!res.ok) return statusMap;
+
+  const data = await res.json();
+  for (const item of data.items ?? []) {
+    statusMap.set(item.id, item.status as YouTubeVideoStatus);
+  }
+  return statusMap;
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_: string, code: string) =>
+      String.fromCharCode(Number(code))
+    );
 }
 
 function applyHardFilters(title: string): string | null {

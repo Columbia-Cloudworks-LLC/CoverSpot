@@ -31,6 +31,11 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Redirect /login to / — there is no separate login route
+  if (request.nextUrl.pathname === "/login") {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
   const isProtected =
     request.nextUrl.pathname.startsWith("/dashboard") ||
     request.nextUrl.pathname.startsWith("/playlist");
