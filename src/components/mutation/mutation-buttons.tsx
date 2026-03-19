@@ -91,7 +91,7 @@ export function MutationButtons({
         size="sm"
         onClick={() => handleMutation("add")}
         disabled={mutating}
-        className="text-caption cursor-pointer min-h-11 gap-1.5"
+        className="cursor-pointer min-h-11 gap-1.5"
       >
         {mutating && lastAction === "add" && <Loader2 className="size-3.5 animate-spin" />}
         {mutating && lastAction === "add" ? "Adding..." : "Add"}
@@ -101,7 +101,7 @@ export function MutationButtons({
         size="sm"
         onClick={() => handleMutation("swap")}
         disabled={mutating}
-        className="text-caption cursor-pointer min-h-11 gap-1.5"
+        className="cursor-pointer min-h-11 gap-1.5"
       >
         {mutating && lastAction === "swap" && <Loader2 className="size-3.5 animate-spin" />}
         {mutating && lastAction === "swap" ? "Swapping..." : "Swap"}

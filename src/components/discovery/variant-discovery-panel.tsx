@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { VariantCard } from "@/components/discovery/variant-card";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
 
-const VARIANT_TYPES = ["cover", "live", "acoustic", "remix"] as const;
+const VARIANT_TYPES = ["cover", "live", "acoustic", "remix", "custom"] as const;
 
 interface Track {
   id: string;
@@ -58,7 +58,12 @@ export function VariantDiscoveryPanel({
   const [customType, setCustomType] = useState("");
 
   const discover = async (type?: string) => {
-    const searchType = type ?? (customType.trim() || variantType);
+    const searchType =
+      type ??
+      (variantType === "custom" ? customType.trim() : variantType);
+    if (!searchType) {
+      return;
+    }
     setLoading(true);
     setSearched(true);
 
@@ -93,12 +98,27 @@ export function VariantDiscoveryPanel({
     setRejected([]);
     setSearched(false);
     setShowRejected(false);
+
+    if (type !== "custom") {
+      setCustomType("");
+      discover(type);
+    }
   };
+
+  useEffect(() => {
+    setVariantType(VARIANT_TYPES[0]);
+    setCustomType("");
+    setVariants([]);
+    setRejected([]);
+    setSearched(false);
+    setShowRejected(false);
+    void discover(VARIANT_TYPES[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run default preset search only when track changes
+  }, [track.id]);
 
   const rejectedLabel = `${rejected.length} rejected result${
     rejected.length === 1 ? "" : "s"
   }`;
-  const hasResults = searched && variants.length > 0;
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0">
@@ -125,57 +145,48 @@ export function VariantDiscoveryPanel({
         </div>
       )}
 
-      <div className={`space-y-2 ${customType.trim() ? "opacity-50 pointer-events-none" : ""}`}>
-        <p className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
-          Filter by type
-        </p>
-        <Tabs value={variantType} onValueChange={handleTypeChange}>
-          <TabsList className="w-full h-11 p-1">
-            {VARIANT_TYPES.map((type) => (
-              <TabsTrigger
-                key={type}
-                value={type}
-                className="capitalize text-caption h-9 cursor-pointer"
-              >
-                {type}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      </div>
+      <Tabs value={variantType} onValueChange={handleTypeChange}>
+        <TabsList className="w-full h-auto min-h-11 flex-wrap p-1 gap-1">
+          {VARIANT_TYPES.map((type) => (
+            <TabsTrigger
+              key={type}
+              value={type}
+              className="capitalize text-caption h-9 cursor-pointer flex-1 min-w-18"
+            >
+              {type}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      <div className={`space-y-2 ${hasResults ? "opacity-80" : ""}`}>
-        <p className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
-          Listen and replace
-        </p>
-        <p className="text-caption text-muted-foreground">
-          Custom type overrides the selected tab above
-        </p>
-        <div className={`flex flex-col sm:flex-row gap-2 ${hasResults ? "sm:items-center" : ""}`}>
-          <input
-            type="text"
-            id="custom-variant-type"
-            aria-label="Custom variant type, e.g. piano cover"
-            placeholder="e.g. piano cover, orchestral"
-            value={customType}
-            onChange={(e) => setCustomType(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                discover();
-              }
-            }}
-            className="flex-1 rounded-md border border-input bg-transparent px-3 py-2.5 text-body placeholder:text-muted-foreground min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          />
-          <Button
-            onClick={() => discover()}
-            disabled={loading}
-            className={`cursor-pointer min-h-11 sm:min-w-28 gap-2 ${hasResults ? "sm:min-w-24" : ""}`}
-          >
-            {loading && <Loader2 className="size-4 animate-spin" />}
-            {loading ? "Searching..." : "Search"}
-          </Button>
+      {variantType === "custom" && (
+        <div className="space-y-2">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              id="custom-variant-type"
+              aria-label="Custom variant type, e.g. piano cover"
+              placeholder="e.g. piano cover, orchestral"
+              value={customType}
+              onChange={(e) => setCustomType(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customType.trim()) {
+                  discover();
+                }
+              }}
+              className="flex-1 rounded-md border border-input bg-transparent px-3 py-2.5 text-body placeholder:text-muted-foreground min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            <Button
+              onClick={() => discover()}
+              disabled={loading || !customType.trim()}
+              className="cursor-pointer min-h-11 sm:min-w-28 gap-2"
+            >
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              {loading ? "Searching..." : "Search"}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
         {loading &&
@@ -189,9 +200,15 @@ export function VariantDiscoveryPanel({
           </p>
         )}
 
-        {!loading && !searched && (
+        {!loading && !searched && variantType !== "custom" && (
           <p className="text-body text-muted-foreground text-center py-6">
-            Search to discover variant candidates, then preview and apply.
+            Select a type above to discover alternatives.
+          </p>
+        )}
+
+        {!loading && !searched && variantType === "custom" && (
+          <p className="text-body text-muted-foreground text-center py-6">
+            Enter a custom type and search to discover alternatives.
           </p>
         )}
 

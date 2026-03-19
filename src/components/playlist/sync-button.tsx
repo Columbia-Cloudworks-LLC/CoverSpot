@@ -47,7 +47,7 @@ export function SyncButton() {
     <Button
       onClick={handleSync}
       disabled={syncing}
-      className="cursor-pointer min-h-11 px-4 text-body gap-2"
+      className="cursor-pointer min-h-11 px-4 gap-2"
     >
       {syncing && <Loader2 className="size-4 animate-spin" />}
       {syncing ? "Syncing..." : "Sync Playlists"}

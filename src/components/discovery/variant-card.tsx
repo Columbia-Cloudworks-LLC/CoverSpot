@@ -79,7 +79,6 @@ export function VariantCard({
           <div className="flex items-center gap-2 mt-1">
             <Badge
               variant={variant.platform === "spotify" ? "default" : "secondary"}
-              className="text-caption"
             >
               {variant.platform === "spotify" ? "Spotify" : "YouTube"}
             </Badge>

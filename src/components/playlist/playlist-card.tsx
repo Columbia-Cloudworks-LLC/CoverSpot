@@ -79,7 +79,7 @@ export function PlaylistCard({
                 Synced {syncedAgo}
               </span>
               {isCollaborative && (
-                <Badge variant="secondary" className="text-caption">
+                <Badge variant="secondary">
                   Collaborative
                 </Badge>
               )}
