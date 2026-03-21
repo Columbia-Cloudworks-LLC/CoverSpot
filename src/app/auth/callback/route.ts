@@ -2,20 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { getCanonicalOriginForUrl } from "@/lib/auth/redirect-origin";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
-  const callbackOrigin = getCanonicalOriginForUrl(requestUrl);
+  const callbackOrigin = requestUrl.origin;
   const searchParams = requestUrl.searchParams;
   const code = searchParams.get("code");
-
-  // Prefer same-origin callback so PKCE verifier cookies match; LoginButton
-  // sends users to canonical origin before OAuth to avoid landing here cross-host.
-  if (callbackOrigin !== requestUrl.origin) {
-    const callbackUrl = new URL(requestUrl.pathname + requestUrl.search, callbackOrigin);
-    return NextResponse.redirect(callbackUrl);
-  }
 
   if (!code) {
     return NextResponse.redirect(`${callbackOrigin}?error=no_code`);
