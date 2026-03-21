@@ -39,3 +39,28 @@ Follow these repository rules when generating code.
 - `supabase/migrations/`
 
 If uncertain, prefer the simplest implementation that preserves current behavior.
+
+When reviewing code in this repository, prioritize **long-term maintainability** over small style issues.
+
+For every review, apply this three-question framework:
+
+1. **Does it reuse?**
+   - Prefer existing utilities, types, and patterns.
+   - Flag any duplicate helpers, types, or exports (e.g., extra date formatters or user types).
+   - Suggest consolidating new code into existing abstractions where possible.
+
+2. **Does it follow conventions?**
+   - Enforce existing naming, folder structure, error-handling patterns, and state-management approaches.
+   - Call out files that look inconsistent with the rest of the codebase.
+   - Avoid introducing new patterns when a similar pattern already exists.
+
+3. **Can a typical team member explain it?**
+   - Flag code that is unusually complex or hard to reason about.
+   - Treat heavy use of `eslint-disable`, `ts-ignore`, or similar suppressions as a smell.
+   - Prefer understandable, debuggable flows over clever or opaque solutions.
+
+Explicitly look for AI-specific technical debt:
+
+- Suppressed lint/type errors instead of fixes.
+- Duplicate or unused exports, helpers, and types.
+- Complex flows (auth, payments, migrations) that rely on fragile assumptions.
