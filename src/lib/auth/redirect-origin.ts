@@ -31,6 +31,11 @@ export function getCanonicalOriginForUrl(url: URL): string {
   return getConfiguredAppOrigin();
 }
 
+/**
+ * OAuth callback URL on the canonical app origin. The browser must already be
+ * on that origin when starting PKCE (`signInWithOAuth`) so verifier cookies
+ * match `exchangeCodeForSession` on `/auth/callback`.
+ */
 export function getOAuthRedirectTo(currentOrigin: string): string {
   const parsedOrigin = new URL(currentOrigin);
   const redirectOrigin = getCanonicalOriginForUrl(parsedOrigin);

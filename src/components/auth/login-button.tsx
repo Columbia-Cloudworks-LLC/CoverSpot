@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getOAuthRedirectTo } from "@/lib/auth/redirect-origin";
+import {
+  getCanonicalOriginForUrl,
+  getOAuthRedirectTo,
+} from "@/lib/auth/redirect-origin";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -30,6 +33,15 @@ export function LoginButton({ errorCode }: { errorCode?: string }) {
 
   const handleLogin = async () => {
     if (isConnecting) return;
+
+    const pageUrl = new URL(window.location.href);
+    const canonicalOrigin = getCanonicalOriginForUrl(pageUrl);
+    if (window.location.origin !== canonicalOrigin) {
+      const target = new URL(pageUrl.pathname + pageUrl.search, canonicalOrigin);
+      window.location.assign(target.toString());
+      return;
+    }
+
     setIsConnecting(true);
 
     try {

@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
   const searchParams = requestUrl.searchParams;
   const code = searchParams.get("code");
 
+  // Prefer same-origin callback so PKCE verifier cookies match; LoginButton
+  // sends users to canonical origin before OAuth to avoid landing here cross-host.
   if (callbackOrigin !== requestUrl.origin) {
     const callbackUrl = new URL(requestUrl.pathname + requestUrl.search, callbackOrigin);
     return NextResponse.redirect(callbackUrl);
