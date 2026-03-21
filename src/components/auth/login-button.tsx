@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getOAuthRedirectTo } from "@/lib/auth/redirect-origin";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -34,12 +35,13 @@ export function LoginButton({ errorCode }: { errorCode?: string }) {
     try {
       const supabase = createClient();
       const scopes = process.env.NEXT_PUBLIC_SPOTIFY_SCOPES ?? "";
+      const redirectTo = getOAuthRedirectTo(window.location.origin);
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "spotify",
         options: {
           scopes,
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo,
         },
       });
 

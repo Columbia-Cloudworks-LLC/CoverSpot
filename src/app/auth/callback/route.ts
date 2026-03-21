@@ -2,13 +2,21 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import { getCanonicalOriginForUrl } from "@/lib/auth/redirect-origin";
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const requestUrl = new URL(request.url);
+  const callbackOrigin = getCanonicalOriginForUrl(requestUrl);
+  const searchParams = requestUrl.searchParams;
   const code = searchParams.get("code");
 
+  if (callbackOrigin !== requestUrl.origin) {
+    const callbackUrl = new URL(requestUrl.pathname + requestUrl.search, callbackOrigin);
+    return NextResponse.redirect(callbackUrl);
+  }
+
   if (!code) {
-    return NextResponse.redirect(`${origin}?error=no_code`);
+    return NextResponse.redirect(`${callbackOrigin}?error=no_code`);
   }
 
   const cookieStore = await cookies();
@@ -36,7 +44,7 @@ export async function GET(request: NextRequest) {
 
   if (error || !data.session) {
     console.error("Auth callback error:", error);
-    return NextResponse.redirect(`${origin}?error=auth_failed`);
+    return NextResponse.redirect(`${callbackOrigin}?error=auth_failed`);
   }
 
   const { session } = data;
@@ -73,7 +81,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.redirect(`${origin}/dashboard`);
+  const response = NextResponse.redirect(`${callbackOrigin}/dashboard`);
   pendingCookies.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, options);
   });
