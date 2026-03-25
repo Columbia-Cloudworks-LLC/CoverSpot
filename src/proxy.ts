@@ -1,7 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getCanonicalOriginForUrl, isLocalHostname } from "@/lib/auth/redirect-origin";
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  if (request.nextUrl.hostname === "127.0.0.1") {
+    const localhostUrl = request.nextUrl.clone();
+    localhostUrl.hostname = "localhost";
+    return NextResponse.redirect(localhostUrl);
+  }
+
+  const canonicalOrigin = getCanonicalOriginForUrl(request.nextUrl);
+  const requestIsLocal = isLocalHostname(request.nextUrl.hostname);
+  const shouldCanonicalRedirect = !requestIsLocal && canonicalOrigin !== request.nextUrl.origin;
+
+  if (shouldCanonicalRedirect) {
+    const redirectUrl = new URL(
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      canonicalOrigin
+    );
+    return NextResponse.redirect(redirectUrl);
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });

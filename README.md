@@ -94,6 +94,7 @@ See [docs/coverspot-prd.md](docs/coverspot-prd.md) for full architecture and req
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Client-safe | `.env` | Supabase URL for browser/server client |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client-safe | `.env` | Public anon key |
+| `NEXT_PUBLIC_APP_ORIGIN` | Client-safe | `.env` | Canonical app origin for OAuth callbacks (e.g. `https://coverspot.app`) |
 | `NEXT_PUBLIC_SPOTIFY_SCOPES` | Client-safe | `.env` | OAuth scopes requested during login |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only | `.env`, `supabase/functions/.env` | Never expose to client code |
 | `SPOTIFY_CLIENT_ID` | Server-only | `.env`, `supabase/functions/.env` | Spotify app client ID |

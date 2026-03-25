@@ -106,7 +106,10 @@ GEMINI_API_KEY=
 3. Enter `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`.
 4. Copy the callback URL shown (format: `https://<project-ref>.supabase.co/auth/v1/callback`) and add it as a redirect URI in the Spotify Developer Dashboard.
 5. Set Site URL to your production app URL (e.g., `https://coverspot.app`).
-6. Add `http://127.0.0.1:3000` to Redirect URLs for local development.
+6. Add these exact callback URLs to Redirect URLs:
+   - `https://coverspot.app/auth/callback`
+   - `http://localhost:3000/auth/callback`
+   - `http://127.0.0.1:3000/auth/callback`
 
 **Configure Spotify as auth provider (local Supabase):**
 
