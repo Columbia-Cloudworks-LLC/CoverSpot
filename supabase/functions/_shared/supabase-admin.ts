@@ -8,20 +8,20 @@ export function createAdminClient() {
   );
 }
 
-export function getUserIdFromAuth(req: Request): string | null {
+/**
+ * Validates the JWT from the Authorization header server-side via
+ * Supabase Auth and returns the authenticated user's ID.
+ *
+ * This replaces the old decode-only helper so we get real signature
+ * verification even with gateway `verify_jwt` disabled.
+ */
+export async function verifyUserAuth(req: Request): Promise<string | null> {
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
+  if (!authHeader?.startsWith("Bearer ")) return null;
 
-  const token = authHeader.replace("Bearer ", "");
-  try {
-    const payloadSegment = token.split(".")[1];
-    if (!payloadSegment) return null;
-
-    const base64 = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const payload = JSON.parse(atob(padded));
-    return payload.sub ?? null;
-  } catch {
-    return null;
-  }
+  const token = authHeader.slice(7);
+  const admin = createAdminClient();
+  const { data: { user }, error } = await admin.auth.getUser(token);
+  if (error || !user) return null;
+  return user.id;
 }

@@ -1,5 +1,5 @@
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { createAdminClient, getUserIdFromAuth } from "../_shared/supabase-admin.ts";
+import { createAdminClient, verifyUserAuth } from "../_shared/supabase-admin.ts";
 import { spotifyFetch, refreshSpotifyToken } from "../_shared/spotify.ts";
 
 interface DiscoverRequest {
@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
   if (corsResponse) return corsResponse;
 
   try {
-    const userId = getUserIdFromAuth(req);
+    const userId = await verifyUserAuth(req);
     if (!userId) {
       return respond({ error: "Unauthorized" }, 401);
     }

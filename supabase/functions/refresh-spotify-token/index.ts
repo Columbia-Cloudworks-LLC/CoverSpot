@@ -1,5 +1,5 @@
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
-import { createAdminClient, getUserIdFromAuth } from "../_shared/supabase-admin.ts";
+import { createAdminClient, verifyUserAuth } from "../_shared/supabase-admin.ts";
 import { refreshSpotifyToken } from "../_shared/spotify.ts";
 
 Deno.serve(async (req: Request) => {
@@ -7,7 +7,7 @@ Deno.serve(async (req: Request) => {
   if (corsResponse) return corsResponse;
 
   try {
-    const userId = getUserIdFromAuth(req);
+    const userId = await verifyUserAuth(req);
     let targetUserId = userId;
 
     if (req.method === "POST") {

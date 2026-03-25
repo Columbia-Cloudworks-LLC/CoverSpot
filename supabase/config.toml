@@ -321,16 +321,16 @@ deno_version = 2
 # supabase/functions/ are skipped with a dashboard warning.
 # https://supabase.com/docs/guides/deployment/branching/github-integration
 [functions.refresh-spotify-token]
-verify_jwt = true
+verify_jwt = false
 
 [functions.sync-playlists]
-verify_jwt = true
+verify_jwt = false
 
 [functions.discover-variants]
-verify_jwt = true
+verify_jwt = false
 
 [functions.mutate-playlist]
-verify_jwt = true
+verify_jwt = false
 
 [analytics]
 enabled = true

@@ -13,7 +13,7 @@ export function createClient() {
  * to finish loading the session from cookies before returning. Without
  * this, `functions.invoke` can race ahead of session initialisation and
  * send the anon key instead of the user JWT — which the edge function
- * gateway accepts (valid JWT) but `getUserIdFromAuth` rejects (no `sub`).
+ * gateway accepts (valid JWT) but `verifyUserAuth` rejects (no `sub`).
  */
 export async function getAccessToken(): Promise<string | null> {
   const supabase = createClient();
