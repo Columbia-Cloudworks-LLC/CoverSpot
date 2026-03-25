@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Playlist editor (3-column layout):** `LayoutShell`, `PlaylistSidebar`, and `TrackPanel` under `src/components/workspace/` — full-viewport drill-down from playlists → tracks → variant discovery on `/dashboard`, reusing existing `VariantDiscoveryPanel`, `VariantCard`, preview players, mutations, and sync.
+- **Layout animation:** `.workspace-grid` utility in `globals.css` for smooth `grid-template-columns` transitions when the right panel expands (with `prefers-reduced-motion` support).
+- **Discovery UX:** Variant results grouped by source (**On Spotify** / **On YouTube**) within each variant type tab in `variant-discovery-panel.tsx`.
+
+### Changed
+
+- **Dashboard:** Replaced the playlist card grid with the unified workspace; server still loads playlists, tracks load client-side when a playlist is selected (same data model as `/playlist/[id]`).
+- **Dashboard shell:** `dashboard/layout.tsx` uses full-width, full-height `main` with overflow contained for the grid; `DashboardNav` spans the viewport (no `max-w-5xl`).
+- **Loading:** Dashboard `loading.tsx` skeleton matches the three-column layout.
+
 ### Fixed
 
 - Declare all Edge Functions in `supabase/config.toml` so Supabase GitHub/Branching auto-deploys them (avoids “only Functions declared in config.toml” warnings).

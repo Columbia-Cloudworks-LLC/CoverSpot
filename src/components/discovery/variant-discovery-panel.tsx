@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { VariantCard } from "@/components/discovery/variant-card";
 import { toast } from "sonner";
 import { Loader2, X } from "lucide-react";
@@ -220,17 +221,54 @@ export function VariantDiscoveryPanel({
           </p>
         )}
 
-        {!loading &&
-          variants.map((v) => (
-            <VariantCard
-              key={v.id}
-              variant={v}
-              playlistId={playlistId}
-              spotifyPlaylistId={spotifyPlaylistId}
-              snapshotId={snapshotId}
-              originalTrackPosition={track.position}
-            />
-          ))}
+        {!loading && variants.length > 0 && (() => {
+          const spotifyVariants = variants.filter((v) => v.platform === "spotify");
+          const youtubeVariants = variants.filter((v) => v.platform === "youtube");
+          return (
+            <>
+              {spotifyVariants.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                      On Spotify
+                    </span>
+                    <Separator className="flex-1" />
+                  </div>
+                  {spotifyVariants.map((v) => (
+                    <VariantCard
+                      key={v.id}
+                      variant={v}
+                      playlistId={playlistId}
+                      spotifyPlaylistId={spotifyPlaylistId}
+                      snapshotId={snapshotId}
+                      originalTrackPosition={track.position}
+                    />
+                  ))}
+                </div>
+              )}
+              {youtubeVariants.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                      On YouTube
+                    </span>
+                    <Separator className="flex-1" />
+                  </div>
+                  {youtubeVariants.map((v) => (
+                    <VariantCard
+                      key={v.id}
+                      variant={v}
+                      playlistId={playlistId}
+                      spotifyPlaylistId={spotifyPlaylistId}
+                      snapshotId={snapshotId}
+                      originalTrackPosition={track.position}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {!loading && rejected.length > 0 && (
           <div className="pt-2 border-t border-border space-y-2">

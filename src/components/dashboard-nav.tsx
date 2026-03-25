@@ -30,7 +30,7 @@ export function DashboardNav({ userEmail }: { userEmail: string }) {
 
   return (
     <header className="border-b border-border">
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-12 sm:h-14 flex items-center justify-between">
+      <div className="w-full px-4 sm:px-6 h-12 sm:h-14 flex items-center justify-between">
         <Link
           href="/dashboard"
           className="text-subheading inline-flex min-h-11 items-center rounded-md px-2 -mx-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
