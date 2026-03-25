@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getAccessToken } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -43,10 +43,17 @@ export function MutationButtons({
     setLastAction(type);
 
     try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Session expired. Please log in again.");
+        return;
+      }
+
       const supabase = createClient();
       const { data, error } = await supabase.functions.invoke(
         "mutate-playlist",
         {
+          headers: { Authorization: `Bearer ${accessToken}` },
           body: {
             playlist_id: playlistId,
             spotify_playlist_id: spotifyPlaylistId,

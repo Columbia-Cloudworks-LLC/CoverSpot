@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getAccessToken } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,10 +77,17 @@ export function VariantDiscoveryPanel({
     setSearched(true);
 
     try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Session expired. Please log in again.");
+        return;
+      }
+
       const supabase = createClient();
       const { data, error } = await supabase.functions.invoke(
         "discover-variants",
         {
+          headers: { Authorization: `Bearer ${accessToken}` },
           body: { track_id: track.id, variant_type: searchType },
         }
       );

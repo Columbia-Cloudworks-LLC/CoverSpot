@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Declare all Edge Functions in `supabase/config.toml` so Supabase GitHub/Branching auto-deploys them (avoids "only Functions declared in config.toml" warnings).
+- **Edge Function 401 on `functions.invoke`:** When the browser Supabase client had not finished loading the session from cookies, `functions.invoke` could send the **anon key** as the `Authorization` bearer. The gateway accepts that JWT (`verify_jwt`), but edge helpers such as `getUserIdFromAuth` expect a user `sub`, so `sync-playlists`, `discover-variants`, and `mutate-playlist` returned 401. Added `getAccessToken()` in `src/lib/supabase/client.ts` (awaits `getSession()`), and pass `Authorization: Bearer <access_token>` from `SyncButton`, `MutationButtons`, and `VariantDiscoveryPanel` before invoking functions; show a session-expired message when no token is available.
 
 ## [0.1.0] - 2026-03-19
 

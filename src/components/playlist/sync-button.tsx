@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, getAccessToken } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -16,8 +16,18 @@ export function SyncButton() {
     const toastId = toast.loading("Syncing playlists from Spotify...");
 
     try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Session expired. Please log in again.", { id: toastId });
+        router.push("/");
+        return;
+      }
+
       const supabase = createClient();
-      const { data, error } = await supabase.functions.invoke("sync-playlists");
+      const { data, error } = await supabase.functions.invoke(
+        "sync-playlists",
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
 
       if (error) {
         toast.error("Sync failed. Please try again.", { id: toastId });
