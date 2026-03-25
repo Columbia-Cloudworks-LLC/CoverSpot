@@ -30,7 +30,21 @@ export function SyncButton() {
       );
 
       if (error) {
-        toast.error("Sync failed. Please try again.", { id: toastId });
+        let message = "Sync failed. Please try again.";
+        const context = (error as { context?: Response }).context;
+        if (context) {
+          const body = await context.clone().json().catch(() => null) as
+            | { error?: string; needsReauth?: boolean }
+            | null;
+          if (body?.needsReauth) {
+            message = "Spotify session expired. Please log in again.";
+            router.push("/");
+          } else if (body?.error) {
+            message = body.error;
+          }
+        }
+
+        toast.error(message, { id: toastId });
         console.error("Sync error:", error);
         return;
       }

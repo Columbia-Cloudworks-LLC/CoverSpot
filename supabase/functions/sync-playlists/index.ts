@@ -69,21 +69,22 @@ Deno.serve(async (req: Request) => {
     if (expiresAt - Date.now() < 5 * 60 * 1000) {
       const tokenData = await refreshSpotifyToken(user.spotify_refresh_token);
       if (!tokenData) {
-        await updateSyncJob(admin, syncJobId, "failed", "Token refresh failed");
-        return new Response(
-          JSON.stringify({ error: "Token refresh failed", needsReauth: true }),
-          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        // If refresh fails, continue with the currently stored access token once.
+        // This avoids false 401s caused by stale expiry metadata while the token is
+        // still valid. If the token is truly expired, Spotify will return 401 below
+        // and we surface a re-auth requirement then.
+        console.warn("sync-playlists: refresh failed, retrying with stored access token");
+      } else {
+        accessToken = tokenData.access_token;
+        await admin
+          .from("users")
+          .update({
+            spotify_access_token: tokenData.access_token,
+            spotify_refresh_token: tokenData.refresh_token ?? user.spotify_refresh_token,
+            token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+          })
+          .eq("id", userId);
       }
-      accessToken = tokenData.access_token;
-      await admin
-        .from("users")
-        .update({
-          spotify_access_token: tokenData.access_token,
-          spotify_refresh_token: tokenData.refresh_token ?? user.spotify_refresh_token,
-          token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-        })
-        .eq("id", userId);
     }
 
     let playlistsSynced = 0;

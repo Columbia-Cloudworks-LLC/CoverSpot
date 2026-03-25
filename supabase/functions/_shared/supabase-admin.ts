@@ -14,7 +14,12 @@ export function getUserIdFromAuth(req: Request): string | null {
 
   const token = authHeader.replace("Bearer ", "");
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const payloadSegment = token.split(".")[1];
+    if (!payloadSegment) return null;
+
+    const base64 = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded));
     return payload.sub ?? null;
   } catch {
     return null;

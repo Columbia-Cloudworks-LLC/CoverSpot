@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   const providerToken = session.provider_token;
   const providerRefreshToken = session.provider_refresh_token;
 
-  if (providerToken && providerRefreshToken) {
+  if (providerToken) {
     const admin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -58,6 +58,16 @@ export async function GET(request: NextRequest) {
       "";
 
     const isPremium = session.user.user_metadata?.product === "premium";
+    const { data: existingUser } = await admin
+      .from("users")
+      .select("spotify_refresh_token")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    const refreshTokenToStore =
+      providerRefreshToken ??
+      existingUser?.spotify_refresh_token ??
+      "";
 
     await admin.from("users").upsert(
       {
@@ -65,7 +75,7 @@ export async function GET(request: NextRequest) {
         spotify_id: spotifyId,
         email: session.user.email ?? "",
         spotify_access_token: providerToken,
-        spotify_refresh_token: providerRefreshToken,
+        spotify_refresh_token: refreshTokenToStore,
         token_expires_at: new Date(
           Date.now() + 3600 * 1000
         ).toISOString(),
