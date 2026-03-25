@@ -21,6 +21,8 @@ interface MutationButtonsProps {
   spotifyPlaylistId: string;
   snapshotId: string;
   originalTrackPosition: number;
+  /** Reduces button height for use inside compact single-row cards */
+  compact?: boolean;
 }
 
 export function MutationButtons({
@@ -30,6 +32,7 @@ export function MutationButtons({
   spotifyPlaylistId,
   snapshotId,
   originalTrackPosition,
+  compact = false,
 }: MutationButtonsProps) {
   const [mutating, setMutating] = useState(false);
   const [showConflict, setShowConflict] = useState(false);
@@ -91,7 +94,7 @@ export function MutationButtons({
         size="sm"
         onClick={() => handleMutation("add")}
         disabled={mutating}
-        className="cursor-pointer min-h-11 gap-1.5"
+        className={compact ? "cursor-pointer h-8 gap-1" : "cursor-pointer min-h-11 gap-1.5"}
       >
         {mutating && lastAction === "add" && <Loader2 className="size-3.5 animate-spin" />}
         {mutating && lastAction === "add" ? "Adding..." : "Add"}
@@ -101,7 +104,7 @@ export function MutationButtons({
         size="sm"
         onClick={() => handleMutation("swap")}
         disabled={mutating}
-        className="cursor-pointer min-h-11 gap-1.5"
+        className={compact ? "cursor-pointer h-8 gap-1" : "cursor-pointer min-h-11 gap-1.5"}
       >
         {mutating && lastAction === "swap" && <Loader2 className="size-3.5 animate-spin" />}
         {mutating && lastAction === "swap" ? "Swapping..." : "Swap"}

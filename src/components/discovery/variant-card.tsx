@@ -1,25 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
-import { Play, EyeOff, ExternalLink } from "lucide-react";
+import { Play, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/tooltip";
-import { YouTubePlayer } from "@/components/playback/youtube-player";
-import { SpotifyPreview } from "@/components/playback/spotify-preview";
 import { MutationButtons } from "@/components/mutation/mutation-buttons";
+import { usePlayer, type PlayableVariant } from "@/lib/player-context";
+import { cn } from "@/lib/utils";
 
-interface Variant {
-  id: string;
-  platform: "spotify" | "youtube";
-  platform_id: string;
+interface Variant extends PlayableVariant {
   variant_type: string;
-  title: string;
-  artist_or_channel: string;
-  thumbnail_url: string | null;
-  duration_ms: number | null;
-  embeddable: boolean;
   status: string;
   rejection_reason: string | null;
 }
@@ -41,7 +30,8 @@ export function VariantCard({
   originalTrackPosition,
   isRejected,
 }: VariantCardProps) {
-  const [showPlayer, setShowPlayer] = useState(false);
+  const { play, currentVariant } = usePlayer();
+  const isPlaying = currentVariant?.id === variant.id;
 
   const durationStr = variant.duration_ms
     ? `${Math.floor(variant.duration_ms / 60000)}:${Math.floor(
@@ -51,115 +41,104 @@ export function VariantCard({
         .padStart(2, "0")}`
     : null;
 
+  const watchUrl = `https://www.youtube.com/watch?v=${variant.platform_id}`;
+
+  const handlePlay = () => {
+    if (!isRejected) play(variant);
+  };
+
   return (
     <div
-      className={`rounded-xl border border-border p-3 space-y-3 ${
-        isRejected ? "opacity-60" : ""
-      }`}
+      className={cn(
+        "rounded-lg border border-border p-2 flex items-center gap-2.5 transition-colors",
+        isPlaying && "border-primary/40 bg-primary/5",
+        isRejected && "opacity-60"
+      )}
     >
-      <div className="flex items-start gap-3">
+      {/* Clickable thumbnail — acts as album art; clicking starts the mini-player */}
+      <button
+        onClick={handlePlay}
+        disabled={isRejected}
+        aria-label={`Play ${variant.title}`}
+        className={cn(
+          "relative group/thumb shrink-0 h-11 w-11 rounded overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          isRejected ? "cursor-default" : "cursor-pointer"
+        )}
+      >
         {variant.thumbnail_url ? (
           <Image
             src={variant.thumbnail_url}
             alt=""
-            width={48}
-            height={48}
-            sizes="48px"
+            width={44}
+            height={44}
+            sizes="44px"
             loading="lazy"
-            className="h-12 w-12 rounded object-cover shrink-0"
+            className="h-11 w-11 object-cover"
           />
         ) : (
-          <div className="h-12 w-12 rounded bg-muted shrink-0" />
+          <div className="h-11 w-11 bg-muted flex items-center justify-center">
+            <span className="text-muted-foreground text-xs">♫</span>
+          </div>
         )}
-        <div className="flex-1 min-w-0">
-          <p className="text-body font-medium line-clamp-2">{variant.title}</p>
-          <p className="text-caption text-foreground/75 truncate">
+        {!isRejected && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover/thumb:opacity-100 transition-opacity">
+            <Play className="size-4 text-white fill-white" />
+          </div>
+        )}
+      </button>
+
+      {/* Metadata: title + artist + platform badge */}
+      <div className="flex-1 min-w-0">
+        <p className="text-body font-medium truncate leading-tight">{variant.title}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <p className="text-caption text-muted-foreground truncate leading-tight">
             {variant.artist_or_channel}
           </p>
-          <div className="flex items-center gap-2 mt-1">
-            <Badge
-              variant={variant.platform === "spotify" ? "default" : "secondary"}
-            >
-              {variant.platform === "spotify" ? "Spotify" : "YouTube"}
-            </Badge>
-            {durationStr && (
-              <span className="text-caption text-foreground/75">
-                {durationStr}
-              </span>
-            )}
-          </div>
+          <Badge
+            variant={variant.platform === "spotify" ? "default" : "secondary"}
+            className="shrink-0 text-[10px] px-1 py-0 leading-tight h-4"
+          >
+            {variant.platform === "spotify" ? "Spotify" : "YT"}
+          </Badge>
         </div>
+        {isRejected && variant.rejection_reason && (
+          <p className="text-caption text-destructive mt-0.5 truncate">
+            {variant.rejection_reason}
+          </p>
+        )}
       </div>
 
-      {isRejected && variant.rejection_reason && (
-        <p className="text-caption text-destructive">{variant.rejection_reason}</p>
+      {/* Duration */}
+      {durationStr && (
+        <span className="text-caption text-muted-foreground tabular-nums shrink-0">
+          {durationStr}
+        </span>
       )}
 
-      <div className="flex items-center gap-2">
-        <Button
-          variant={variant.platform === "youtube" ? "default" : "secondary"}
-          size="sm"
-          onClick={() => setShowPlayer(!showPlayer)}
-          className="cursor-pointer min-h-11 gap-1.5"
-        >
-          {showPlayer ? (
-            <>
-              <EyeOff className="size-3.5" />
-              Hide
-            </>
-          ) : (
-            <>
-              <Play className="size-3.5" />
-              Preview
-            </>
+      {/* Action buttons */}
+      {!isRejected && (
+        <div className="flex items-center gap-1 shrink-0">
+          {variant.platform === "youtube" && (
+            <a
+              href={watchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open on YouTube"
+              className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <ExternalLink className="size-3.5" />
+            </a>
           )}
-        </Button>
-
-        {!isRejected && variant.platform === "spotify" && (
-          <MutationButtons
-            variantId={variant.id}
-            variantPlatformId={variant.platform_id}
-            playlistId={playlistId}
-            spotifyPlaylistId={spotifyPlaylistId}
-            snapshotId={snapshotId}
-            originalTrackPosition={originalTrackPosition}
-          />
-        )}
-
-        {!isRejected && variant.platform === "youtube" && (
-          <Tooltip content="YouTube variants can be previewed but not added to your Spotify playlist.">
-            <span className="text-caption text-foreground/75 ml-auto cursor-default underline decoration-dotted underline-offset-2">
-              Preview only
-            </span>
-          </Tooltip>
-        )}
-      </div>
-
-      {showPlayer && (
-        <div className="pt-2">
-          {variant.platform === "youtube" && variant.embeddable ? (
-            <YouTubePlayer videoId={variant.platform_id} />
-          ) : variant.platform === "spotify" ? (
-            <SpotifyPreview trackId={variant.platform_id} />
-          ) : variant.platform === "youtube" ? (
-            <div className="space-y-2">
-              <p className="text-caption text-foreground/75">
-                Embedded playback is not available for this video.
-              </p>
-              <a
-                href={`https://www.youtube.com/watch?v=${variant.platform_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-caption font-medium text-primary hover:underline"
-              >
-                Watch on YouTube
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
-          ) : (
-            <p className="text-caption text-foreground/75">
-              Playback not available for this variant.
-            </p>
+          {variant.platform === "spotify" && (
+            <MutationButtons
+              variantId={variant.id}
+              variantPlatformId={variant.platform_id}
+              playlistId={playlistId}
+              spotifyPlaylistId={spotifyPlaylistId}
+              snapshotId={snapshotId}
+              originalTrackPosition={originalTrackPosition}
+              compact
+            />
           )}
         </div>
       )}

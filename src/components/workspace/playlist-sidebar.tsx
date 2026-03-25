@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { SyncButton } from "@/components/playlist/sync-button";
-import { LibraryBig } from "lucide-react";
+import { LibraryBig, RefreshCw } from "lucide-react";
 import type { Database } from "@/lib/types/database";
 
 type Playlist = Database["public"]["Tables"]["spotify_playlists"]["Row"];
@@ -12,7 +12,7 @@ interface PlaylistSidebarProps {
   playlists: Playlist[];
   selectedPlaylistId: string | null;
   onSelectPlaylist: (playlist: Playlist) => void;
-  /** When the right panel is expanded, sidebar compresses: hides track counts, truncates titles more aggressively */
+  /** When the right panel is expanded, sidebar compresses to icon-only thumbnails */
   compact?: boolean;
 }
 
@@ -32,8 +32,8 @@ export function PlaylistSidebar({
       {/* Header */}
       <div
         className={cn(
-          "flex items-center gap-2 px-4 py-3 border-b border-border shrink-0",
-          compact ? "justify-center px-2" : "justify-between"
+          "flex items-center gap-2 px-3 py-3 border-b border-border shrink-0",
+          compact ? "justify-center flex-col gap-2" : "justify-between px-4"
         )}
       >
         {!compact && (
@@ -43,10 +43,19 @@ export function PlaylistSidebar({
           </div>
         )}
         {compact && (
-          <LibraryBig className="size-4 text-muted-foreground shrink-0" />
+          <LibraryBig
+            className="size-4 text-muted-foreground shrink-0"
+            aria-label="Your Library"
+          />
         )}
-        <div className={cn("shrink-0", compact && "hidden")}>
-          <SyncButton />
+
+        {/* Sync: full button when expanded, icon-only with tooltip when compact */}
+        <div className={cn("shrink-0", compact && "w-full flex justify-center")}>
+          {compact ? (
+            <CompactSyncButton />
+          ) : (
+            <SyncButton />
+          )}
         </div>
       </div>
 
@@ -65,8 +74,10 @@ export function PlaylistSidebar({
               type="button"
               onClick={() => onSelectPlaylist(playlist)}
               aria-current={isSelected ? "true" : undefined}
+              title={compact ? playlist.name : undefined}
               className={cn(
-                "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                "w-full flex items-center gap-3 text-left transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                compact ? "justify-center px-2 py-2" : "px-3 py-2",
                 isSelected
                   ? "bg-accent text-accent-foreground"
                   : "hover:bg-accent/50 text-sidebar-foreground"
@@ -77,19 +88,27 @@ export function PlaylistSidebar({
                 <Image
                   src={playlist.image_url}
                   alt=""
-                  width={40}
-                  height={40}
-                  sizes="40px"
+                  width={compact ? 32 : 40}
+                  height={compact ? 32 : 40}
+                  sizes={compact ? "32px" : "40px"}
                   loading="lazy"
-                  className="h-10 w-10 rounded object-cover shrink-0"
+                  className={cn(
+                    "rounded object-cover shrink-0",
+                    compact ? "h-8 w-8" : "h-10 w-10"
+                  )}
                 />
               ) : (
-                <div className="h-10 w-10 rounded bg-muted flex items-center justify-center shrink-0">
-                  <span className="text-base text-muted-foreground">♫</span>
+                <div
+                  className={cn(
+                    "rounded bg-muted flex items-center justify-center shrink-0",
+                    compact ? "h-8 w-8" : "h-10 w-10"
+                  )}
+                >
+                  <span className="text-sm text-muted-foreground">♫</span>
                 </div>
               )}
 
-              {/* Name + track count -- hidden in compact mode */}
+              {/* Name + track count — hidden in compact mode */}
               {!compact && (
                 <div className="min-w-0 flex-1">
                   <p className="text-meta font-medium truncate leading-tight">
@@ -105,5 +124,27 @@ export function PlaylistSidebar({
         })}
       </nav>
     </aside>
+  );
+}
+
+/** Icon-only sync button for the collapsed sidebar state */
+function CompactSyncButton() {
+  // We can't easily pass the syncing state up from SyncButton so we render a
+  // simplified version that delegates to the same edge function. Rather than
+  // duplicating logic, we forward clicks to a hidden SyncButton wrapper.
+  return (
+    <div className="relative">
+      <div
+        className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+        title="Sync Playlists"
+        aria-label="Sync Playlists"
+      >
+        <RefreshCw className="size-3.5" />
+      </div>
+      {/* Invisible full SyncButton sits on top to handle the click */}
+      <div className="absolute inset-0 opacity-0 overflow-hidden">
+        <SyncButton />
+      </div>
+    </div>
   );
 }

@@ -39,6 +39,8 @@ interface VariantDiscoveryPanelProps {
   spotifyPlaylistId: string;
   snapshotId: string;
   onClose: () => void;
+  /** Called when a search completes for this track (for session-level "already searched" state) */
+  onSearched?: (trackId: string) => void;
   showTrackHeader?: boolean;
 }
 
@@ -48,6 +50,7 @@ export function VariantDiscoveryPanel({
   spotifyPlaylistId,
   snapshotId,
   onClose,
+  onSearched,
   showTrackHeader = true,
 }: VariantDiscoveryPanelProps) {
   const [variantType, setVariantType] = useState<string>(VARIANT_TYPES[0]);
@@ -57,6 +60,8 @@ export function VariantDiscoveryPanel({
   const [searched, setSearched] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
   const [customType, setCustomType] = useState("");
+  /** Per-type result counts from completed searches this session */
+  const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const requestIdRef = useRef(0);
 
   const discover = async (type?: string) => {
@@ -88,8 +93,14 @@ export function VariantDiscoveryPanel({
         return;
       }
 
-      setVariants(data.variants ?? []);
-      setRejected(data.rejected ?? []);
+      const found: Variant[] = data.variants ?? [];
+      const foundRejected: Variant[] = data.rejected ?? [];
+      setVariants(found);
+      setRejected(foundRejected);
+
+      // Record result count for this type so the tab can show it
+      setTypeCounts((prev) => ({ ...prev, [searchType]: found.length }));
+      onSearched?.(track.id);
     } catch (err) {
       if (currentRequestId !== requestIdRef.current) return;
       toast.error("Discovery failed unexpectedly");
@@ -121,6 +132,7 @@ export function VariantDiscoveryPanel({
     setRejected([]);
     setSearched(false);
     setShowRejected(false);
+    setTypeCounts({});
     void discover(VARIANT_TYPES[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run default preset search only when track changes
   }, [track.id]);
@@ -130,39 +142,44 @@ export function VariantDiscoveryPanel({
   }`;
 
   return (
-    <div className="flex flex-col gap-4 flex-1 min-h-0">
+    <div className="flex flex-col gap-3 flex-1 min-h-0">
       {showTrackHeader && (
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-1">
-            <p className="text-caption uppercase tracking-[0.08em] text-muted-foreground">
-              Searching alternatives for
-            </p>
-            <h3 className="text-subheading truncate">{track.title}</h3>
-            <p className="text-caption text-muted-foreground truncate">
-              {track.artist_name}
-            </p>
+        /* Condensed single-line header: "Title · Artist — Alternatives [X]" */
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5 min-w-0">
+              <span className="text-body font-semibold truncate">{track.title}</span>
+              <span className="text-caption text-muted-foreground shrink-0">·</span>
+              <span className="text-caption text-muted-foreground truncate">{track.artist_name}</span>
+              <span className="text-caption text-muted-foreground shrink-0">— Alternatives</span>
+            </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
             aria-label="Close discovery panel"
-            className="shrink-0 cursor-pointer h-11 w-11 rounded-full"
+            className="shrink-0 cursor-pointer h-8 w-8 rounded-full"
           >
-            <X className="size-4" />
+            <X className="size-3.5" />
           </Button>
         </div>
       )}
 
       <Tabs value={variantType} onValueChange={handleTypeChange}>
-        <TabsList className="w-full h-auto min-h-11 flex-wrap p-1 gap-1">
+        <TabsList variant="line" className="w-full h-auto min-h-9 flex p-0 gap-0 border-b border-border rounded-none bg-transparent">
           {VARIANT_TYPES.map((type) => (
             <TabsTrigger
               key={type}
               value={type}
-              className="capitalize text-caption h-9 cursor-pointer flex-1 min-w-18"
+              className="capitalize text-caption h-9 cursor-pointer flex-1 min-w-0 rounded-none border-b-2 border-transparent data-active:border-primary data-active:text-foreground data-active:font-semibold px-1"
             >
-              {type}
+              <span className="truncate">{type}</span>
+              {typeCounts[type] !== undefined && (
+                <span className="ml-1 text-[10px] text-muted-foreground tabular-nums">
+                  ({typeCounts[type]})
+                </span>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -197,10 +214,10 @@ export function VariantDiscoveryPanel({
         </div>
       )}
 
-      <div className="space-y-2 flex-1 overflow-y-auto min-h-0">
+      <div className="space-y-1.5 flex-1 overflow-y-auto min-h-0">
         {loading &&
           Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 rounded-md" />
+            <Skeleton key={i} className="h-14 rounded-md" />
           ))}
 
         {!loading && searched && variants.length === 0 && (
@@ -227,7 +244,7 @@ export function VariantDiscoveryPanel({
           return (
             <>
               {spotifyVariants.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
                       On Spotify
@@ -247,7 +264,7 @@ export function VariantDiscoveryPanel({
                 </div>
               )}
               {youtubeVariants.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
                     <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
                       On YouTube
@@ -271,7 +288,7 @@ export function VariantDiscoveryPanel({
         })()}
 
         {!loading && rejected.length > 0 && (
-          <div className="pt-2 border-t border-border space-y-2">
+          <div className="pt-2 border-t border-border space-y-1.5">
             <button
               onClick={() => setShowRejected(!showRejected)}
               className="text-caption text-muted-foreground hover:text-foreground cursor-pointer min-h-11 inline-flex items-center"
