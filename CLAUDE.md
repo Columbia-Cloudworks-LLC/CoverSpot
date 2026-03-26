@@ -9,6 +9,14 @@ Expressive, effortless, sharp. The interface should feel premium and high-perfor
 ### Aesthetic Direction
 Mobile-first, content-forward UI inspired by Unsplash's cleanliness, Canva mobile's approachable creation flow, and Linear's sleek SaaS precision. The product must look like a premium third-party companion, not a Spotify clone.
 
+### External Services
+- **Supabase production:** project ref `lasqdllhyerpaufhzunw`. Use the Supabase MCP for database queries, logs, and edge function management. Use the CLI for secrets.
+- **Google Cloud:** project ID `coverspot` under `nicholas.king@columbiacloudworks.com`. Use the gcloud MCP (switch account first) to inspect APIs, keys, and IAM.
+- **Vercel:** production at `coverspot.app`. Use the Vercel MCP for deployment management.
+- **Spotify:** OAuth configured as a Supabase Auth provider. Client credentials live in edge function secrets, not GCP.
+
+See `AGENTS.md` for full MCP tool names, commands, and required secrets.
+
 ### Design Principles
 - Prioritize mobile flows and thumb-friendly interaction patterns for discovery, preview, and apply actions.
 - Keep visual hierarchy sharp and content-forward so track/variant decisions feel fast and effortless.
