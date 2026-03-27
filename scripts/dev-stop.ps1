@@ -8,6 +8,27 @@ $repoRootPath = [System.IO.Path]::GetFullPath($RepoRoot)
 $sessionFilePath = Join-Path $repoRootPath '.dev-session.json'
 $stoppedLabels = New-Object System.Collections.Generic.List[string]
 
+function Get-RepoNextProcesses {
+  $repoPattern = [regex]::Escape($repoRootPath)
+  $nextPattern = '(?i)(next(\.cmd)?\s+dev|npm(\.cmd)?\s+run\s+dev|node(\.exe)?.*next\\dist\\bin\\next)'
+  $processes = Get-CimInstance Win32_Process |
+    Where-Object {
+      $_.ProcessId -ne $PID -and
+      $_.CommandLine -and
+      $_.CommandLine -match $repoPattern -and
+      $_.CommandLine -match $nextPattern
+    } |
+    Select-Object ProcessId, Name, CommandLine
+
+  return @($processes | ForEach-Object {
+      @{
+        pid = $_.ProcessId
+        name = $_.Name
+        commandLine = if ($_.CommandLine.Length -gt 220) { $_.CommandLine.Substring(0, 220) } else { $_.CommandLine }
+      }
+    })
+}
+
 function Stop-ProcessIfRunning {
   param(
     [int]$ProcessId,
@@ -51,6 +72,15 @@ function Stop-ProcessesByCommandPattern {
   }
 }
 
+function Stop-RepoNextDevProcesses {
+  $repoNextProcesses = Get-RepoNextProcesses
+  foreach ($proc in $repoNextProcesses) {
+    if (Stop-ProcessIfRunning -ProcessId $proc.pid -Label 'Next.js child process') {
+      $stoppedLabels.Add("Next.js child process (PID $($proc.pid))")
+    }
+  }
+}
+
 Write-Host ''
 Write-Host '=========================================='
 Write-Host '  CoverSpot Dev Stop'
@@ -77,6 +107,7 @@ if (Test-Path $sessionFilePath) {
 
 Stop-ProcessesByCommandPattern -Pattern 'supabase\s+functions\s+serve' -Label 'Edge Functions terminal'
 Stop-ProcessesByCommandPattern -Pattern 'npm(\.cmd)?\s+run\s+dev' -Label 'Next.js terminal'
+Stop-RepoNextDevProcesses
 
 Write-Host '[INFO] Stopping Supabase containers for this project...'
 $previousErrorActionPreference = $ErrorActionPreference

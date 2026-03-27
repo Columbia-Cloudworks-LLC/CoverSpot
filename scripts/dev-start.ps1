@@ -339,7 +339,7 @@ try {
     $previousErrorActionPreference = $ErrorActionPreference
     try {
       $script:ErrorActionPreference = 'Continue'
-      $stopRaw = & supabase stop 2>&1
+      $null = & supabase stop 2>&1
       $stopCode = $LASTEXITCODE
     } finally {
       $script:ErrorActionPreference = $previousErrorActionPreference
