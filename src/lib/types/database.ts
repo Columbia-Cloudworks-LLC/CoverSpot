@@ -18,6 +18,7 @@ export interface Database {
           spotify_refresh_token: string;
           token_expires_at: string;
           premium_status: boolean;
+          is_moderator: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -29,6 +30,7 @@ export interface Database {
           spotify_refresh_token: string;
           token_expires_at: string;
           premium_status?: boolean;
+          is_moderator?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -40,6 +42,7 @@ export interface Database {
           spotify_refresh_token?: string;
           token_expires_at?: string;
           premium_status?: boolean;
+          is_moderator?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -153,6 +156,7 @@ export interface Database {
           rejection_reason: string | null;
           relevance_score: number | null;
           flag_count: number;
+          duplicate_of: string | null;
           discovered_at: string;
         };
         Insert: {
@@ -170,6 +174,7 @@ export interface Database {
           rejection_reason?: string | null;
           relevance_score?: number | null;
           flag_count?: number;
+          duplicate_of?: string | null;
           discovered_at?: string;
         };
         Update: {
@@ -187,7 +192,83 @@ export interface Database {
           rejection_reason?: string | null;
           relevance_score?: number | null;
           flag_count?: number;
+          duplicate_of?: string | null;
           discovered_at?: string;
+        };
+      };
+      variant_flags: {
+        Row: {
+          id: string;
+          variant_id: string;
+          user_id: string;
+          reason: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          variant_id: string;
+          user_id: string;
+          reason: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          variant_id?: string;
+          user_id?: string;
+          reason?: string;
+          created_at?: string;
+        };
+      };
+      moderation_audit_log: {
+        Row: {
+          id: string;
+          variant_id: string;
+          moderator_id: string;
+          action: string;
+          previous_status: string;
+          new_status: string;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          variant_id: string;
+          moderator_id: string;
+          action: string;
+          previous_status: string;
+          new_status: string;
+          reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          variant_id?: string;
+          moderator_id?: string;
+          action?: string;
+          previous_status?: string;
+          new_status?: string;
+          reason?: string | null;
+          created_at?: string;
+        };
+      };
+      app_config: {
+        Row: {
+          key: string;
+          value: Json;
+          description: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          key: string;
+          value: Json;
+          description?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          key?: string;
+          value?: Json;
+          description?: string | null;
+          updated_at?: string;
         };
       };
       mutation_jobs: {
@@ -204,6 +285,9 @@ export interface Database {
           status: "pending" | "success" | "conflict" | "failed";
           error_message: string | null;
           retry_count: number;
+          max_retries: number;
+          last_attempted_at: string | null;
+          is_dead_letter: boolean;
           created_at: string;
           completed_at: string | null;
         };
@@ -220,6 +304,9 @@ export interface Database {
           status?: "pending" | "success" | "conflict" | "failed";
           error_message?: string | null;
           retry_count?: number;
+          max_retries?: number;
+          last_attempted_at?: string | null;
+          is_dead_letter?: boolean;
           created_at?: string;
           completed_at?: string | null;
         };
@@ -236,6 +323,9 @@ export interface Database {
           status?: "pending" | "success" | "conflict" | "failed";
           error_message?: string | null;
           retry_count?: number;
+          max_retries?: number;
+          last_attempted_at?: string | null;
+          is_dead_letter?: boolean;
           created_at?: string;
           completed_at?: string | null;
         };
@@ -249,6 +339,9 @@ export interface Database {
           tracks_synced: number;
           error_message: string | null;
           retry_count: number;
+          max_retries: number;
+          last_attempted_at: string | null;
+          is_dead_letter: boolean;
           started_at: string;
           completed_at: string | null;
         };
@@ -260,6 +353,9 @@ export interface Database {
           tracks_synced?: number;
           error_message?: string | null;
           retry_count?: number;
+          max_retries?: number;
+          last_attempted_at?: string | null;
+          is_dead_letter?: boolean;
           started_at?: string;
           completed_at?: string | null;
         };
@@ -271,6 +367,9 @@ export interface Database {
           tracks_synced?: number;
           error_message?: string | null;
           retry_count?: number;
+          max_retries?: number;
+          last_attempted_at?: string | null;
+          is_dead_letter?: boolean;
           started_at?: string;
           completed_at?: string | null;
         };

@@ -332,6 +332,18 @@ verify_jwt = false
 [functions.mutate-playlist]
 verify_jwt = false
 
+[functions.flag-variant]
+verify_jwt = false
+
+[functions.moderate-variant]
+verify_jwt = false
+
+[functions.cleanup-variants]
+verify_jwt = false
+
+[functions.admin-health]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

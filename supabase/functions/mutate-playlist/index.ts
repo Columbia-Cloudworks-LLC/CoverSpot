@@ -1,6 +1,10 @@
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { createAdminClient, verifyUserAuth } from "../_shared/supabase-admin.ts";
 import { spotifyFetch, refreshSpotifyToken } from "../_shared/spotify.ts";
+import { withRetry, isTransientError } from "../_shared/retry.ts";
+import { createLogger } from "../_shared/logger.ts";
+
+const log = createLogger("mutate-playlist");
 
 interface MutateRequest {
   playlist_id: string;
@@ -90,6 +94,8 @@ Deno.serve(async (req: Request) => {
       .single();
 
     const jobId = job?.id;
+    log.jobTransition("mutation", jobId ?? "unknown", "new", "pending");
+
     const trackUri = `spotify:track:${variant_platform_id}`;
     const playlistApiId = spotify_playlist_id || currentPlaylist?.spotify_playlist_id;
 
@@ -99,25 +105,39 @@ Deno.serve(async (req: Request) => {
     }
 
     if (mutation_type === "add") {
-      const result = await spotifyFetch(
-        `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
-        accessToken,
-        {
-          method: "POST",
-          body: JSON.stringify({ uris: [trackUri] }),
-        }
-      );
+      try {
+        const result = await withRetry(
+          async () => {
+            const r = await spotifyFetch(
+              `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
+              accessToken,
+              { method: "POST", body: JSON.stringify({ uris: [trackUri] }) }
+            );
+            if (r.error) {
+              if (r.retryAfter) {
+                log.httpError("spotify", 429, `Retry-After: ${r.retryAfter}s`);
+                throw new Error(`Rate limited (429)`);
+              }
+              throw new Error(r.error);
+            }
+            return r;
+          },
+          (err) => isTransientError(err),
+          { maxRetries: 3 }
+        );
 
-      if (result.error) {
-        await updateJob(admin, jobId, "failed", result.error);
-        return respond({ error: result.error, status: "failed" });
+        const newSnapshot = (result.data as Record<string, string>)?.snapshot_id;
+        await updateJob(admin, jobId, "success", null, newSnapshot);
+        await updatePlaylistSnapshot(admin, playlist_id, newSnapshot);
+        log.jobTransition("mutation", jobId ?? "unknown", "pending", "success");
+
+        return respond({ status: "success", snapshot_id: newSnapshot });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await markDeadLetter(admin, jobId, msg);
+        log.jobTransition("mutation", jobId ?? "unknown", "pending", "dead_letter", { error: msg });
+        return respond({ error: msg, status: "failed" });
       }
-
-      const newSnapshot = (result.data as Record<string, string>)?.snapshot_id;
-      await updateJob(admin, jobId, "success", null, newSnapshot);
-      await updatePlaylistSnapshot(admin, playlist_id, newSnapshot);
-
-      return respond({ status: "success", snapshot_id: newSnapshot });
     }
 
     if (mutation_type === "swap") {
@@ -146,61 +166,81 @@ Deno.serve(async (req: Request) => {
 
       const originalUri = `spotify:track:${(originalTrack as Record<string, string>).spotify_track_id}`;
 
-      const removeResult = await spotifyFetch(
-        `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
-        accessToken,
-        {
-          method: "DELETE",
-          body: JSON.stringify({
-            tracks: [
+      try {
+        // Step 1: Remove original track (with retry)
+        const removeResult = await withRetry(
+          async () => {
+            const r = await spotifyFetch(
+              `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
+              accessToken,
               {
-                uri: originalUri,
-                positions: [original_track_position],
-              },
-            ],
-            snapshot_id: snapshot_id,
-          }),
-        }
-      );
+                method: "DELETE",
+                body: JSON.stringify({
+                  tracks: [{ uri: originalUri, positions: [original_track_position] }],
+                  snapshot_id: snapshot_id,
+                }),
+              }
+            );
+            if (r.error) {
+              if (r.error.includes("snapshot")) {
+                const conflictErr = new Error("Snapshot mismatch");
+                (conflictErr as Error & { isConflict: boolean }).isConflict = true;
+                throw conflictErr;
+              }
+              if (r.retryAfter) throw new Error(`Rate limited (429)`);
+              throw new Error(r.error);
+            }
+            return r;
+          },
+          (err) => isTransientError(err),
+          { maxRetries: 3 }
+        );
 
-      if (removeResult.error) {
-        if (removeResult.error.includes("snapshot")) {
+        const removeSnapshot = (removeResult.data as Record<string, string>)?.snapshot_id;
+
+        // Step 2: Add variant at position (with retry)
+        const addResult = await withRetry(
+          async () => {
+            const r = await spotifyFetch(
+              `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
+              accessToken,
+              {
+                method: "POST",
+                body: JSON.stringify({ uris: [trackUri], position: original_track_position }),
+              }
+            );
+            if (r.error) {
+              if (r.retryAfter) throw new Error(`Rate limited (429)`);
+              throw new Error(r.error);
+            }
+            return r;
+          },
+          (err) => isTransientError(err),
+          { maxRetries: 3 }
+        );
+
+        const finalSnapshot = (addResult.data as Record<string, string>)?.snapshot_id ?? removeSnapshot;
+        await updateJob(admin, jobId, "success", null, finalSnapshot);
+        await updatePlaylistSnapshot(admin, playlist_id, finalSnapshot);
+        log.jobTransition("mutation", jobId ?? "unknown", "pending", "success");
+
+        return respond({ status: "success", snapshot_id: finalSnapshot });
+      } catch (err) {
+        const isConflict = (err as Error & { isConflict?: boolean }).isConflict;
+        if (isConflict) {
           await updateJob(admin, jobId, "conflict", "Snapshot mismatch");
           return respond({ status: "conflict", error: "Playlist was modified" });
         }
-        await updateJob(admin, jobId, "failed", removeResult.error);
-        return respond({ error: removeResult.error, status: "failed" });
+        const msg = err instanceof Error ? err.message : String(err);
+        await markDeadLetter(admin, jobId, msg);
+        log.jobTransition("mutation", jobId ?? "unknown", "pending", "dead_letter", { error: msg });
+        return respond({ error: msg, status: "failed" });
       }
-
-      const removeSnapshot = (removeResult.data as Record<string, string>)?.snapshot_id;
-
-      const addResult = await spotifyFetch(
-        `https://api.spotify.com/v1/playlists/${playlistApiId}/tracks`,
-        accessToken,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            uris: [trackUri],
-            position: original_track_position,
-          }),
-        }
-      );
-
-      if (addResult.error) {
-        await updateJob(admin, jobId, "failed", `Add after remove failed: ${addResult.error}`);
-        return respond({ error: addResult.error, status: "failed" });
-      }
-
-      const finalSnapshot = (addResult.data as Record<string, string>)?.snapshot_id ?? removeSnapshot;
-      await updateJob(admin, jobId, "success", null, finalSnapshot);
-      await updatePlaylistSnapshot(admin, playlist_id, finalSnapshot);
-
-      return respond({ status: "success", snapshot_id: finalSnapshot });
     }
 
     return respond({ error: "Invalid mutation_type" }, 400);
   } catch (err) {
-    console.error("mutate-playlist error:", err);
+    log.error("mutate-playlist unhandled error", { error: String(err) });
     return respond({ error: "Internal server error" }, 500);
   }
 });
@@ -220,6 +260,25 @@ async function updateJob(
       error_message: errorMessage,
       snapshot_id_after: snapshotAfter ?? null,
       completed_at: new Date().toISOString(),
+      last_attempted_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+}
+
+async function markDeadLetter(
+  admin: ReturnType<typeof createAdminClient>,
+  jobId: string | undefined,
+  errorMessage: string
+) {
+  if (!jobId) return;
+  await admin
+    .from("mutation_jobs")
+    .update({
+      status: "failed",
+      is_dead_letter: true,
+      error_message: errorMessage,
+      completed_at: new Date().toISOString(),
+      last_attempted_at: new Date().toISOString(),
     })
     .eq("id", jobId);
 }

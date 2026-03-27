@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { VariantCard } from "@/components/discovery/variant-card";
 import { toast } from "sonner";
-import { Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, X } from "lucide-react";
 
 const VARIANT_TYPES = ["cover", "live", "acoustic", "remix", "custom"] as const;
 
@@ -31,6 +31,16 @@ interface Variant {
   embeddable: boolean;
   status: string;
   rejection_reason: string | null;
+  relevance_score?: number | null;
+  flag_count?: number;
+}
+
+type ConfidenceTier = "high" | "low" | "none";
+
+interface DiscoveryError {
+  message: string;
+  needsReauth?: boolean;
+  partial?: boolean;
 }
 
 interface VariantDiscoveryPanelProps {
@@ -39,7 +49,6 @@ interface VariantDiscoveryPanelProps {
   spotifyPlaylistId: string;
   snapshotId: string;
   onClose: () => void;
-  /** Called when a search completes for this track (for session-level "already searched" state) */
   onSearched?: (trackId: string) => void;
   showTrackHeader?: boolean;
 }
@@ -59,22 +68,24 @@ export function VariantDiscoveryPanel({
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [showLowConfidence, setShowLowConfidence] = useState(false);
   const [customType, setCustomType] = useState("");
-  /** Per-type result counts from completed searches this session */
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
+  const [confidenceTier, setConfidenceTier] = useState<ConfidenceTier | null>(null);
+  const [discoveryError, setDiscoveryError] = useState<DiscoveryError | null>(null);
   const requestIdRef = useRef(0);
 
   const discover = async (type?: string) => {
     const searchType =
       type ??
       (variantType === "custom" ? customType.trim() : variantType);
-    if (!searchType) {
-      return;
-    }
+    if (!searchType) return;
 
     const currentRequestId = ++requestIdRef.current;
     setLoading(true);
     setSearched(true);
+    setDiscoveryError(null);
+    setShowLowConfidence(false);
 
     try {
       const accessToken = await getAccessToken();
@@ -95,22 +106,46 @@ export function VariantDiscoveryPanel({
       if (currentRequestId !== requestIdRef.current) return;
 
       if (error) {
-        toast.error("Discovery failed");
-        console.error("Discovery error:", error);
+        const errorData = data as Record<string, unknown> | null;
+        const needsReauth = errorData?.needsReauth === true;
+        setDiscoveryError({
+          message: needsReauth
+            ? "Your Spotify session has expired."
+            : "Discovery failed. Please try again.",
+          needsReauth,
+        });
         return;
       }
 
       const found: Variant[] = data.variants ?? [];
       const foundRejected: Variant[] = data.rejected ?? [];
+      const tier: ConfidenceTier = data.confidenceTier ?? "high";
+
+      // Sort by relevance_score DESC within each platform group
+      const sortByScore = (a: Variant, b: Variant) =>
+        ((b.relevance_score ?? 0) - (a.relevance_score ?? 0));
+      found.sort(sortByScore);
+      foundRejected.sort(sortByScore);
+
       setVariants(found);
       setRejected(foundRejected);
+      setConfidenceTier(tier);
 
-      // Record result count for this type so the tab can show it
+      // Check if YouTube returned no results (partial failure)
+      const hasYoutube = found.some((v) => v.platform === "youtube") ||
+        foundRejected.some((v) => v.platform === "youtube");
+      if (!hasYoutube && found.length > 0) {
+        setDiscoveryError({
+          message: "YouTube results unavailable — showing Spotify results only.",
+          partial: true,
+        });
+      }
+
       setTypeCounts((prev) => ({ ...prev, [searchType]: found.length }));
       onSearched?.(track.id);
     } catch (err) {
       if (currentRequestId !== requestIdRef.current) return;
-      toast.error("Discovery failed unexpectedly");
+      setDiscoveryError({ message: "Discovery failed unexpectedly. Please try again." });
       console.error(err);
     } finally {
       if (currentRequestId === requestIdRef.current) {
@@ -125,6 +160,9 @@ export function VariantDiscoveryPanel({
     setRejected([]);
     setSearched(false);
     setShowRejected(false);
+    setShowLowConfidence(false);
+    setConfidenceTier(null);
+    setDiscoveryError(null);
 
     if (type !== "custom") {
       setCustomType("");
@@ -139,7 +177,10 @@ export function VariantDiscoveryPanel({
     setRejected([]);
     setSearched(false);
     setShowRejected(false);
+    setShowLowConfidence(false);
     setTypeCounts({});
+    setConfidenceTier(null);
+    setDiscoveryError(null);
     void discover(VARIANT_TYPES[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run default preset search only when track changes
   }, [track.id]);
@@ -148,10 +189,59 @@ export function VariantDiscoveryPanel({
     rejected.length === 1 ? "" : "s"
   }`;
 
+  const renderVariantsByPlatform = (items: Variant[]) => {
+    const spotifyVariants = items.filter((v) => v.platform === "spotify");
+    const youtubeVariants = items.filter((v) => v.platform === "youtube");
+
+    return (
+      <>
+        {spotifyVariants.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                On Spotify
+              </span>
+              <Separator className="flex-1" />
+            </div>
+            {spotifyVariants.map((v) => (
+              <VariantCard
+                key={v.id}
+                variant={v}
+                playlistId={playlistId}
+                spotifyPlaylistId={spotifyPlaylistId}
+                snapshotId={snapshotId}
+                originalTrackPosition={track.position}
+              />
+            ))}
+          </div>
+        )}
+        {youtubeVariants.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                On YouTube
+              </span>
+              <Separator className="flex-1" />
+            </div>
+            {youtubeVariants.map((v) => (
+              <VariantCard
+                key={v.id}
+                variant={v}
+                playlistId={playlistId}
+                spotifyPlaylistId={spotifyPlaylistId}
+                snapshotId={snapshotId}
+                originalTrackPosition={track.position}
+              />
+            ))}
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-3 flex-1 min-h-0">
       {showTrackHeader && (
-        /* Condensed single-line header: "Title · Artist — Alternatives [X]" */
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-1.5 min-w-0">
@@ -222,12 +312,89 @@ export function VariantDiscoveryPanel({
       )}
 
       <div className="space-y-1.5 flex-1 overflow-y-auto min-h-0">
-        {loading &&
-          Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 rounded-md" />
-          ))}
+        {/* Optimistic loading skeletons with platform section structure */}
+        {loading && (
+          <>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                  On Spotify
+                </span>
+                <Separator className="flex-1" />
+              </div>
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={`sp-${i}`} className="h-14 rounded-md" />
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
+                  On YouTube
+                </span>
+                <Separator className="flex-1" />
+              </div>
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={`yt-${i}`} className="h-14 rounded-md" />
+              ))}
+            </div>
+          </>
+        )}
 
-        {!loading && searched && variants.length === 0 && (
+        {/* Error banner (non-blocking for partial failures) */}
+        {!loading && discoveryError && (
+          <div className={`flex items-center gap-2 rounded-md px-3 py-2 text-body ${
+            discoveryError.partial
+              ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200"
+              : "bg-destructive/10 text-destructive"
+          }`}>
+            <AlertTriangle className="size-4 shrink-0" />
+            <span className="flex-1">{discoveryError.message}</span>
+            {discoveryError.needsReauth ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 cursor-pointer"
+                onClick={() => { window.location.href = "/"; }}
+              >
+                Reconnect Spotify
+              </Button>
+            ) : !discoveryError.partial ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 cursor-pointer gap-1"
+                onClick={() => discover()}
+              >
+                <RefreshCw className="size-3" />
+                Retry
+              </Button>
+            ) : null}
+          </div>
+        )}
+
+        {/* Confidence tier banners */}
+        {!loading && searched && variants.length > 0 && confidenceTier === "low" && (
+          <div className="flex items-center gap-2 rounded-md px-3 py-2 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-body">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Results may not be exact matches — review before using.</span>
+          </div>
+        )}
+
+        {!loading && searched && variants.length > 0 && confidenceTier === "none" && !showLowConfidence && (
+          <div className="flex flex-col items-center gap-2 rounded-md px-3 py-4 bg-muted/50 text-muted-foreground text-body text-center">
+            <p>No strong matches found for this track.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => setShowLowConfidence(true)}
+            >
+              Show low-confidence results
+            </Button>
+          </div>
+        )}
+
+        {!loading && searched && variants.length === 0 && !discoveryError && (
           <p className="text-body text-muted-foreground text-center py-6">
             No variants found for this type.
           </p>
@@ -245,55 +412,13 @@ export function VariantDiscoveryPanel({
           </p>
         )}
 
-        {!loading && variants.length > 0 && (() => {
-          const spotifyVariants = variants.filter((v) => v.platform === "spotify");
-          const youtubeVariants = variants.filter((v) => v.platform === "youtube");
-          return (
-            <>
-              {spotifyVariants.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
-                      On Spotify
-                    </span>
-                    <Separator className="flex-1" />
-                  </div>
-                  {spotifyVariants.map((v) => (
-                    <VariantCard
-                      key={v.id}
-                      variant={v}
-                      playlistId={playlistId}
-                      spotifyPlaylistId={spotifyPlaylistId}
-                      snapshotId={snapshotId}
-                      originalTrackPosition={track.position}
-                    />
-                  ))}
-                </div>
-              )}
-              {youtubeVariants.length > 0 && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
-                      On YouTube
-                    </span>
-                    <Separator className="flex-1" />
-                  </div>
-                  {youtubeVariants.map((v) => (
-                    <VariantCard
-                      key={v.id}
-                      variant={v}
-                      playlistId={playlistId}
-                      spotifyPlaylistId={spotifyPlaylistId}
-                      snapshotId={snapshotId}
-                      originalTrackPosition={track.position}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          );
-        })()}
+        {/* Variant list (gated by confidence for "none" tier) */}
+        {!loading &&
+          variants.length > 0 &&
+          (confidenceTier !== "none" || showLowConfidence) &&
+          renderVariantsByPlatform(variants)}
 
+        {/* Rejected results toggle */}
         {!loading && rejected.length > 0 && (
           <div className="pt-2 border-t border-border space-y-1.5">
             <button

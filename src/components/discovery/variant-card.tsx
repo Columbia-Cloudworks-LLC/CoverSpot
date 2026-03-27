@@ -1,16 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
-import { Play, ExternalLink } from "lucide-react";
+import { Play, ExternalLink, Flag, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { MutationButtons } from "@/components/mutation/mutation-buttons";
 import { usePlayer, type PlayableVariant } from "@/lib/player-context";
+import { createClient, getAccessToken } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Variant extends PlayableVariant {
   variant_type: string;
   status: string;
   rejection_reason: string | null;
+  relevance_score?: number | null;
+  flag_count?: number;
 }
 
 interface VariantCardProps {
@@ -22,6 +33,22 @@ interface VariantCardProps {
   isRejected?: boolean;
 }
 
+const FLAG_REASONS = [
+  "Not a real cover",
+  "Wrong song",
+  "Spam/inappropriate",
+  "Duplicate",
+  "Other",
+] as const;
+
+const REJECTION_LABELS: Record<string, string> = {
+  "Karaoke track detected": "This is a karaoke/backing track, not a performed version",
+  "Instrumental-only track": "Instrumental track without a cover performance",
+  "Tutorial/lesson content": "This is an instructional video, not a performance",
+  "Duration far outside expected range": "Track length is too different from the original",
+  "Rejected by moderator": "Removed by a moderator after review",
+};
+
 export function VariantCard({
   variant,
   playlistId,
@@ -32,6 +59,8 @@ export function VariantCard({
 }: VariantCardProps) {
   const { play, currentVariant } = usePlayer();
   const isPlaying = currentVariant?.id === variant.id;
+  const [flagged, setFlagged] = useState(false);
+  const [flagging, setFlagging] = useState(false);
 
   const durationStr = variant.duration_ms
     ? `${Math.floor(variant.duration_ms / 60000)}:${Math.floor(
@@ -47,6 +76,54 @@ export function VariantCard({
     if (!isRejected) play(variant);
   };
 
+  const handleFlag = async (reason: string) => {
+    setFlagging(true);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        toast.error("Session expired. Please log in again.");
+        return;
+      }
+      const supabase = createClient();
+      const { error } = await supabase.functions.invoke("flag-variant", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: { variant_id: variant.id, reason },
+      });
+
+      if (error) {
+        toast.error("Failed to submit flag");
+        return;
+      }
+      setFlagged(true);
+      toast.success("Variant flagged for review");
+    } catch {
+      toast.error("Failed to submit flag");
+    } finally {
+      setFlagging(false);
+    }
+  };
+
+  const scorePercent =
+    variant.relevance_score != null
+      ? Math.round(variant.relevance_score * 100)
+      : null;
+
+  const scoreColor =
+    scorePercent != null
+      ? scorePercent >= 72
+        ? "text-emerald-600 dark:text-emerald-400"
+        : scorePercent >= 45
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-muted-foreground"
+      : null;
+
+  const friendlyRejection =
+    variant.rejection_reason && REJECTION_LABELS[variant.rejection_reason]
+      ? REJECTION_LABELS[variant.rejection_reason]
+      : variant.rejection_reason;
+
+  const isUnderReview = variant.status === "review";
+
   return (
     <div
       className={cn(
@@ -55,7 +132,7 @@ export function VariantCard({
         isRejected && "opacity-60"
       )}
     >
-      {/* Clickable thumbnail — acts as album art; clicking starts the mini-player */}
+      {/* Thumbnail */}
       <button
         onClick={handlePlay}
         disabled={isRejected}
@@ -77,7 +154,7 @@ export function VariantCard({
           />
         ) : (
           <div className="h-11 w-11 bg-muted flex items-center justify-center">
-            <span className="text-muted-foreground text-xs">♫</span>
+            <span className="text-muted-foreground text-xs">&#9835;</span>
           </div>
         )}
         {!isRejected && (
@@ -87,9 +164,21 @@ export function VariantCard({
         )}
       </button>
 
-      {/* Metadata: title + artist + platform badge */}
+      {/* Metadata */}
       <div className="flex-1 min-w-0">
-        <p className="text-body font-medium truncate leading-tight">{variant.title}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-body font-medium truncate leading-tight">
+            {variant.title}
+          </p>
+          {isUnderReview && (
+            <Badge
+              variant="outline"
+              className="shrink-0 text-[10px] px-1 py-0 leading-tight h-4 border-amber-500 text-amber-600 dark:text-amber-400"
+            >
+              Under review
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 mt-0.5">
           <p className="text-caption text-muted-foreground truncate leading-tight">
             {variant.artist_or_channel}
@@ -101,12 +190,25 @@ export function VariantCard({
             {variant.platform === "spotify" ? "Spotify" : "YT"}
           </Badge>
         </div>
-        {isRejected && variant.rejection_reason && (
+        {isRejected && friendlyRejection && (
           <p className="text-caption text-destructive mt-0.5 truncate">
-            {variant.rejection_reason}
+            {friendlyRejection}
           </p>
         )}
       </div>
+
+      {/* Confidence score badge */}
+      {scorePercent != null && !isRejected && (
+        <span
+          className={cn(
+            "text-caption tabular-nums shrink-0 font-medium",
+            scoreColor
+          )}
+          title="Relevance confidence — how closely this variant matches the original track"
+        >
+          {scorePercent}%
+        </span>
+      )}
 
       {/* Duration */}
       {durationStr && (
@@ -140,6 +242,39 @@ export function VariantCard({
               compact
             />
           )}
+
+          {/* Flag dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              disabled={flagged || flagging}
+              aria-label="Flag this variant"
+              className={cn(
+                "inline-flex items-center justify-center h-8 w-8 rounded-md transition-colors cursor-pointer",
+                flagged
+                  ? "text-destructive cursor-default"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              )}
+            >
+              {flagging ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Flag
+                  className={cn("size-3.5", flagged && "fill-destructive")}
+                />
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {FLAG_REASONS.map((reason) => (
+                <DropdownMenuItem
+                  key={reason}
+                  onClick={() => handleFlag(reason)}
+                  className="text-caption cursor-pointer"
+                >
+                  {reason}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </div>

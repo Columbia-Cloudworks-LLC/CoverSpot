@@ -5,6 +5,14 @@ export interface SpotifyFetchResult<T = unknown> {
   needsReauth?: boolean;
 }
 
+/** Thrown when Spotify returns 401 so callers can return needsReauth (not swallowed as generic failure). */
+export class SpotifyReauthRequiredError extends Error {
+  constructor() {
+    super("Token expired (401)");
+    this.name = "SpotifyReauthRequiredError";
+  }
+}
+
 export async function spotifyFetch<T = unknown>(
   url: string,
   accessToken: string,

@@ -1,6 +1,14 @@
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { createAdminClient, verifyUserAuth } from "../_shared/supabase-admin.ts";
-import { spotifyFetch, refreshSpotifyToken, sleep, jitter } from "../_shared/spotify.ts";
+import {
+  spotifyFetch,
+  refreshSpotifyToken,
+  SpotifyReauthRequiredError,
+} from "../_shared/spotify.ts";
+import { withRetry, isTransientError } from "../_shared/retry.ts";
+import { createLogger } from "../_shared/logger.ts";
+
+const log = createLogger("sync-playlists");
 
 interface SpotifyPlaylist {
   id: string;
@@ -34,10 +42,7 @@ Deno.serve(async (req: Request) => {
   try {
     const userId = await verifyUserAuth(req);
     if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ error: "Unauthorized" }, 401);
     }
 
     const admin = createAdminClient();
@@ -49,6 +54,7 @@ Deno.serve(async (req: Request) => {
       .single();
 
     const syncJobId = syncJob?.id;
+    log.jobTransition("sync", syncJobId ?? "unknown", "new", "running");
 
     const { data: user } = await admin
       .from("users")
@@ -58,10 +64,7 @@ Deno.serve(async (req: Request) => {
 
     if (!user) {
       await updateSyncJob(admin, syncJobId, "failed", "User not found");
-      return new Response(
-        JSON.stringify({ error: "User not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return respond({ error: "User not found" }, 404);
     }
 
     let accessToken = user.spotify_access_token;
@@ -69,10 +72,6 @@ Deno.serve(async (req: Request) => {
     if (expiresAt - Date.now() < 5 * 60 * 1000) {
       const tokenData = await refreshSpotifyToken(user.spotify_refresh_token);
       if (!tokenData) {
-        // If refresh fails, continue with the currently stored access token once.
-        // This avoids false 401s caused by stale expiry metadata while the token is
-        // still valid. If the token is truly expired, Spotify will return 401 below
-        // and we surface a re-auth requirement then.
         console.warn("sync-playlists: refresh failed, retrying with stored access token");
       } else {
         accessToken = tokenData.access_token;
@@ -94,25 +93,41 @@ Deno.serve(async (req: Request) => {
     let hasMore = true;
 
     while (hasMore) {
-      const result = await spotifyFetch<{
-        items: SpotifyPlaylist[];
-        total: number;
-        next: string | null;
-      }>(`https://api.spotify.com/v1/me/playlists?limit=${limit}&offset=${offset}`, accessToken);
+      const result = await withRetry(
+        async () => {
+          const r = await spotifyFetch<{
+            items: SpotifyPlaylist[];
+            total: number;
+            next: string | null;
+          }>(`https://api.spotify.com/v1/me/playlists?limit=${limit}&offset=${offset}`, accessToken);
 
-      if (result.error) {
-        if (result.retryAfter) {
-          await sleep(jitter(result.retryAfter * 1000));
-          continue;
-        }
-        await updateSyncJob(admin, syncJobId, "failed", result.error);
-        return new Response(
-          JSON.stringify({ error: result.error, needsReauth: result.needsReauth }),
-          { status: result.needsReauth ? 401 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+          if (r.error) {
+            if (r.retryAfter) {
+              log.httpError("spotify", 429, `Retry-After: ${r.retryAfter}s`);
+              throw new Error(`Rate limited. Retry after ${r.retryAfter}s (429)`);
+            }
+            if (r.needsReauth) {
+              throw new SpotifyReauthRequiredError();
+            }
+            throw new Error(r.error);
+          }
+          return r;
+        },
+        (err) => isTransientError(err),
+        { maxRetries: 3 }
+      ).catch((err: unknown) => {
+        if (err instanceof SpotifyReauthRequiredError) throw err;
+        log.error("Playlist fetch failed after retries", { error: String(err), offset });
+        return null;
+      });
+
+      if (!result || !result.data) {
+        await markDeadLetter(admin, syncJobId, "sync_jobs", "Playlist fetch failed after retries");
+        log.jobTransition("sync", syncJobId ?? "unknown", "running", "dead_letter");
+        return respond({ error: "Sync failed after retries", needsReauth: false }, 500);
       }
 
-      const playlists = result.data!.items;
+      const playlists = result.data.items;
 
       for (const pl of playlists) {
         const { data: existing } = await admin
@@ -165,22 +180,25 @@ Deno.serve(async (req: Request) => {
         playlistsSynced++;
       }
 
-      hasMore = result.data!.next !== null;
+      hasMore = result.data.next !== null;
       offset += limit;
     }
 
     await updateSyncJob(admin, syncJobId, "success", null, playlistsSynced, tracksSynced);
+    log.jobTransition("sync", syncJobId ?? "unknown", "running", "success", {
+      playlistsSynced,
+      tracksSynced,
+    });
 
-    return new Response(
-      JSON.stringify({ playlistsSynced, tracksSynced }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return respond({ playlistsSynced, tracksSynced });
   } catch (err) {
-    console.error("sync-playlists error:", err);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (err instanceof SpotifyReauthRequiredError) {
+      await updateSyncJob(admin, syncJobId, "failed", "Token expired");
+      log.jobTransition("sync", syncJobId ?? "unknown", "running", "failed");
+      return respond({ error: "Token expired", needsReauth: true }, 401);
+    }
+    log.error("sync-playlists unhandled error", { error: String(err) });
+    return respond({ error: "Internal server error" }, 500);
   }
 });
 
@@ -202,24 +220,38 @@ async function syncPlaylistTracks(
   let totalSynced = 0;
 
   while (hasMore) {
-    const result = await spotifyFetch<{
-      items: SpotifyTrackItem[];
-      next: string | null;
-    }>(
-      `https://api.spotify.com/v1/playlists/${spotifyPlaylistId}/tracks?limit=${limit}&offset=${offset}&fields=items(added_at,track(id,name,artists(name),album(name,images),duration_ms,preview_url)),next`,
-      accessToken
-    );
+    const result = await withRetry(
+      async () => {
+        const r = await spotifyFetch<{
+          items: SpotifyTrackItem[];
+          next: string | null;
+        }>(
+          `https://api.spotify.com/v1/playlists/${spotifyPlaylistId}/tracks?limit=${limit}&offset=${offset}&fields=items(added_at,track(id,name,artists(name),album(name,images),duration_ms,preview_url)),next`,
+          accessToken
+        );
 
-    if (result.error) {
-      if (result.retryAfter) {
-        await sleep(jitter(result.retryAfter * 1000));
-        continue;
-      }
-      console.error(`Error fetching tracks for ${spotifyPlaylistId}:`, result.error);
-      break;
-    }
+        if (r.error) {
+          if (r.retryAfter) {
+            throw new Error(`Rate limited (429). Retry after ${r.retryAfter}s`);
+          }
+          if (r.needsReauth) {
+            throw new SpotifyReauthRequiredError();
+          }
+          throw new Error(r.error);
+        }
+        return r;
+      },
+      (err) => isTransientError(err),
+      { maxRetries: 3 }
+    ).catch((err: unknown) => {
+      if (err instanceof SpotifyReauthRequiredError) throw err;
+      log.error(`Track fetch failed for playlist ${spotifyPlaylistId}`, { error: String(err) });
+      return null;
+    });
 
-    const items = result.data!.items;
+    if (!result || !result.data) break;
+
+    const items = result.data.items;
 
     for (const item of items) {
       if (!item.track?.id) continue;
@@ -262,7 +294,7 @@ async function syncPlaylistTracks(
       totalSynced++;
     }
 
-    hasMore = result.data!.next !== null;
+    hasMore = result.data.next !== null;
     offset += limit;
   }
 
@@ -286,6 +318,33 @@ async function updateSyncJob(
       playlists_synced: playlistsSynced ?? 0,
       tracks_synced: tracksSynced ?? 0,
       completed_at: new Date().toISOString(),
+      last_attempted_at: new Date().toISOString(),
     })
     .eq("id", jobId);
+}
+
+async function markDeadLetter(
+  admin: ReturnType<typeof createAdminClient>,
+  jobId: string | undefined,
+  table: string,
+  errorMessage: string
+) {
+  if (!jobId) return;
+  await admin
+    .from(table)
+    .update({
+      status: "failed",
+      is_dead_letter: true,
+      error_message: errorMessage,
+      completed_at: new Date().toISOString(),
+      last_attempted_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+}
+
+function respond(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }

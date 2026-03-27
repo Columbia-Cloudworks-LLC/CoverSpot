@@ -1,6 +1,14 @@
 import { corsHeaders, handleCors } from "../_shared/cors.ts";
 import { createAdminClient, verifyUserAuth } from "../_shared/supabase-admin.ts";
 import { spotifyFetch, refreshSpotifyToken } from "../_shared/spotify.ts";
+import { loadConfig, resetConfigCache } from "../_shared/config.ts";
+import {
+  scoreVariant,
+  applyFreshnessDecay,
+  deduplicationKey,
+  getConfidenceTier,
+  type ScoringInput,
+} from "../_shared/scoring.ts";
 
 interface DiscoverRequest {
   track_id: string;
@@ -26,15 +34,24 @@ interface YouTubeSearchItem {
   };
 }
 
-interface YouTubeVideoStatus {
-  embeddable: boolean;
-  privacyStatus: string;
-  uploadStatus: string;
+interface YouTubeVideoItem {
+  id: string;
+  contentDetails?: { duration: string };
+  status?: { embeddable: boolean; privacyStatus: string; uploadStatus: string };
+}
+
+interface OriginalTrack {
+  title: string;
+  artist_name: string;
+  spotify_track_id: string;
+  duration_ms: number;
 }
 
 Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
+
+  resetConfigCache();
 
   try {
     const userId = await verifyUserAuth(req);
@@ -50,7 +67,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const admin = createAdminClient();
+    const config = await loadConfig();
 
+    // -----------------------------------------------------------------------
+    // TTL-aware cache check
+    // -----------------------------------------------------------------------
     if (!force_refresh) {
       const { data: cached } = await admin
         .from("track_variants")
@@ -59,15 +80,54 @@ Deno.serve(async (req: Request) => {
         .eq("variant_type", variant_type);
 
       if (cached && cached.length > 0) {
-        const active = cached.filter((v: Record<string, unknown>) => v.status !== "rejected");
-        const rejected = cached.filter((v: Record<string, unknown>) => v.status === "rejected");
-        return respond({ variants: active, rejected, fromCache: true });
+        const oldestDiscovery = cached.reduce(
+          (min: string, v: Record<string, unknown>) =>
+            (v.discovered_at as string) < min ? (v.discovered_at as string) : min,
+          cached[0].discovered_at as string
+        );
+        const ageHours =
+          (Date.now() - new Date(oldestDiscovery).getTime()) / 3_600_000;
+
+        if (ageHours <= config.variantTtlHours) {
+          // Apply freshness decay and sort
+          const scored = cached.map((v: Record<string, unknown>) => ({
+            ...v,
+            _adjustedScore: applyFreshnessDecay(
+              (v.relevance_score as number) ?? 0,
+              v.discovered_at as string,
+              config.variantTtlHours
+            ),
+          }));
+          scored.sort(
+            (a: { _adjustedScore: number }, b: { _adjustedScore: number }) =>
+              b._adjustedScore - a._adjustedScore
+          );
+
+          const active = scored.filter(
+            (v: Record<string, unknown>) => v.status !== "rejected"
+          );
+          const rejected = scored.filter(
+            (v: Record<string, unknown>) => v.status === "rejected"
+          );
+
+          const topScore = active[0]?._adjustedScore ?? 0;
+          return respond({
+            variants: active.map(stripInternal),
+            rejected: rejected.map(stripInternal),
+            fromCache: true,
+            confidenceTier: getConfidenceTier(topScore, config.scoringThresholds),
+          });
+        }
+        // Cache is stale — fall through to re-discover
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Fetch original track metadata (including duration for scoring)
+    // -----------------------------------------------------------------------
     const { data: originalTrack } = await admin
       .from("spotify_tracks")
-      .select("title, artist_name, spotify_track_id")
+      .select("title, artist_name, spotify_track_id, duration_ms")
       .eq("id", track_id)
       .single();
 
@@ -75,6 +135,9 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Track not found" }, 404);
     }
 
+    // -----------------------------------------------------------------------
+    // Resolve Spotify access token
+    // -----------------------------------------------------------------------
     const { data: user } = await admin
       .from("users")
       .select("spotify_access_token, spotify_refresh_token, token_expires_at")
@@ -95,13 +158,19 @@ Deno.serve(async (req: Request) => {
           .from("users")
           .update({
             spotify_access_token: tokenData.access_token,
-            spotify_refresh_token: tokenData.refresh_token ?? user.spotify_refresh_token,
-            token_expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
+            spotify_refresh_token:
+              tokenData.refresh_token ?? user.spotify_refresh_token,
+            token_expires_at: new Date(
+              Date.now() + tokenData.expires_in * 1000
+            ).toISOString(),
           })
           .eq("id", userId);
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Discover from both platforms
+    // -----------------------------------------------------------------------
     const allVariants: Array<Record<string, unknown>> = [];
 
     const spotifyVariants = await searchSpotify(
@@ -109,7 +178,8 @@ Deno.serve(async (req: Request) => {
       accessToken,
       originalTrack,
       variant_type,
-      track_id
+      track_id,
+      config
     );
     allVariants.push(...spotifyVariants);
 
@@ -117,26 +187,78 @@ Deno.serve(async (req: Request) => {
       admin,
       originalTrack,
       variant_type,
-      track_id
+      track_id,
+      config
     );
     allVariants.push(...youtubeVariants);
 
-    const active = allVariants.filter((v) => v.status !== "rejected");
-    const rejected = allVariants.filter((v) => v.status === "rejected");
+    // -----------------------------------------------------------------------
+    // Cross-platform duplicate detection
+    // -----------------------------------------------------------------------
+    const seen = new Map<string, Record<string, unknown>>();
+    for (const v of allVariants) {
+      const key = deduplicationKey(
+        v.title as string,
+        v.artist_or_channel as string
+      );
+      const existing = seen.get(key);
+      if (existing) {
+        const existingScore = (existing.relevance_score as number) ?? 0;
+        const currentScore = (v.relevance_score as number) ?? 0;
+        if (currentScore > existingScore) {
+          // Mark the old one as duplicate of the new higher-scored one
+          await admin
+            .from("track_variants")
+            .update({ duplicate_of: v.id })
+            .eq("id", existing.id);
+          seen.set(key, v);
+        } else {
+          await admin
+            .from("track_variants")
+            .update({ duplicate_of: existing.id })
+            .eq("id", v.id);
+        }
+      } else {
+        seen.set(key, v);
+      }
+    }
 
-    return respond({ variants: active, rejected, fromCache: false });
+    // Sort by relevance_score DESC
+    const dedupedVariants = Array.from(seen.values());
+    dedupedVariants.sort(
+      (a, b) =>
+        ((b.relevance_score as number) ?? 0) -
+        ((a.relevance_score as number) ?? 0)
+    );
+
+    const active = dedupedVariants.filter((v) => v.status !== "rejected");
+    const rejected = dedupedVariants.filter((v) => v.status === "rejected");
+
+    const topScore = (active[0]?.relevance_score as number) ?? 0;
+
+    return respond({
+      variants: active,
+      rejected,
+      fromCache: false,
+      confidenceTier: getConfidenceTier(topScore, config.scoringThresholds),
+    });
   } catch (err) {
     console.error("discover-variants error:", err);
     return respond({ error: "Internal server error" }, 500);
   }
 });
 
+// ---------------------------------------------------------------------------
+// Spotify search with scoring
+// ---------------------------------------------------------------------------
+
 async function searchSpotify(
   admin: ReturnType<typeof createAdminClient>,
   accessToken: string,
-  originalTrack: { title: string; artist_name: string; spotify_track_id: string },
+  originalTrack: OriginalTrack,
   variantType: string,
-  trackId: string
+  trackId: string,
+  config: Awaited<ReturnType<typeof loadConfig>>
 ): Promise<Array<Record<string, unknown>>> {
   let query: string;
   const title = originalTrack.title;
@@ -178,6 +300,23 @@ async function searchSpotify(
       continue;
     }
 
+    const scoringInput: ScoringInput = {
+      spotifyTitle: originalTrack.title,
+      spotifyArtist: originalTrack.artist_name,
+      spotifyDurationMs: originalTrack.duration_ms,
+      candidateTitle: track.name,
+      candidateChannel: track.artists.map((a) => a.name).join(", "),
+      candidateDurationMs: track.duration_ms,
+    };
+
+    const scoring = scoreVariant(
+      scoringInput,
+      config.scoringWeights,
+      config.durationMaxRatio,
+      config.durationMinRatio,
+      config.scoringThresholds
+    );
+
     const row = {
       original_track_id: trackId,
       platform: "spotify" as const,
@@ -188,7 +327,9 @@ async function searchSpotify(
       thumbnail_url: track.album?.images?.[0]?.url ?? null,
       duration_ms: track.duration_ms,
       embeddable: true,
-      status: "active" as const,
+      status: scoring.hardRejected ? ("rejected" as const) : ("active" as const),
+      rejection_reason: scoring.hardRejectReason,
+      relevance_score: Math.round(scoring.score * 100) / 100,
     };
 
     const { data: inserted } = await admin
@@ -203,11 +344,16 @@ async function searchSpotify(
   return variants;
 }
 
+// ---------------------------------------------------------------------------
+// YouTube search with scoring
+// ---------------------------------------------------------------------------
+
 async function searchYouTube(
   admin: ReturnType<typeof createAdminClient>,
-  originalTrack: { title: string; artist_name: string },
+  originalTrack: OriginalTrack,
   variantType: string,
-  trackId: string
+  trackId: string,
+  config: Awaited<ReturnType<typeof loadConfig>>
 ): Promise<Array<Record<string, unknown>>> {
   const apiKey = Deno.env.get("YOUTUBE_API_KEY");
   if (!apiKey) return [];
@@ -239,7 +385,7 @@ async function searchYouTube(
   const items: YouTubeSearchItem[] = data.items ?? [];
   const variants: Array<Record<string, unknown>> = [];
 
-  const freshVideoIds = [] as string[];
+  const freshVideoIds: string[] = [];
   const freshItemsByVideoId = new Map<string, YouTubeSearchItem>();
 
   for (const item of items) {
@@ -263,19 +409,44 @@ async function searchYouTube(
     }
   }
 
-  const videoStatuses = await fetchVideoStatuses(freshVideoIds, apiKey);
+  const videoDetails = await fetchVideoDetails(freshVideoIds, apiKey);
 
   for (const videoId of freshVideoIds) {
     const item = freshItemsByVideoId.get(videoId)!;
     const snippet = item.snippet;
     const decodedTitle = decodeHtmlEntities(snippet.title);
-    const rejectionReason = applyHardFilters(decodedTitle);
+    const hardFilterReason = applyHardFilters(decodedTitle);
 
-    const status = videoStatuses.get(videoId);
+    const detail = videoDetails.get(videoId);
     const isEmbeddable =
-      status !== undefined
-        ? status.embeddable && status.privacyStatus === "public"
+      detail?.status
+        ? detail.status.embeddable && detail.status.privacyStatus === "public"
         : true;
+
+    const durationMs = detail?.contentDetails
+      ? parseISO8601Duration(detail.contentDetails.duration)
+      : null;
+
+    const scoringInput: ScoringInput = {
+      spotifyTitle: originalTrack.title,
+      spotifyArtist: originalTrack.artist_name,
+      spotifyDurationMs: originalTrack.duration_ms,
+      candidateTitle: decodedTitle,
+      candidateChannel: decodeHtmlEntities(snippet.channelTitle),
+      candidateDurationMs: durationMs,
+    };
+
+    const scoring = scoreVariant(
+      scoringInput,
+      config.scoringWeights,
+      config.durationMaxRatio,
+      config.durationMinRatio,
+      config.scoringThresholds
+    );
+
+    const isRejected = !!hardFilterReason || scoring.hardRejected;
+    const rejectionReason =
+      hardFilterReason ?? scoring.hardRejectReason ?? null;
 
     const row = {
       original_track_id: trackId,
@@ -285,9 +456,11 @@ async function searchYouTube(
       title: decodedTitle,
       artist_or_channel: decodeHtmlEntities(snippet.channelTitle),
       thumbnail_url: snippet.thumbnails?.medium?.url ?? null,
+      duration_ms: durationMs,
       embeddable: isEmbeddable,
-      status: rejectionReason ? ("rejected" as const) : ("active" as const),
+      status: isRejected ? ("rejected" as const) : ("active" as const),
       rejection_reason: rejectionReason,
+      relevance_score: Math.round(scoring.score * 100) / 100,
     };
 
     const { data: inserted } = await admin
@@ -302,15 +475,19 @@ async function searchYouTube(
   return variants;
 }
 
-async function fetchVideoStatuses(
+// ---------------------------------------------------------------------------
+// YouTube video details (status + contentDetails for duration)
+// ---------------------------------------------------------------------------
+
+async function fetchVideoDetails(
   videoIds: string[],
   apiKey: string
-): Promise<Map<string, YouTubeVideoStatus>> {
-  const statusMap = new Map<string, YouTubeVideoStatus>();
-  if (videoIds.length === 0) return statusMap;
+): Promise<Map<string, YouTubeVideoItem>> {
+  const detailMap = new Map<string, YouTubeVideoItem>();
+  if (videoIds.length === 0) return detailMap;
 
   const params = new URLSearchParams({
-    part: "status",
+    part: "status,contentDetails",
     id: videoIds.join(","),
     key: apiKey,
   });
@@ -320,16 +497,33 @@ async function fetchVideoStatuses(
   );
 
   if (!res.ok) {
-    console.warn("fetchVideoStatuses failed:", res.status, await res.text());
-    return statusMap;
+    console.warn("fetchVideoDetails failed:", res.status, await res.text());
+    return detailMap;
   }
 
   const data = await res.json();
   for (const item of data.items ?? []) {
-    statusMap.set(item.id, item.status as YouTubeVideoStatus);
+    detailMap.set(item.id, item as YouTubeVideoItem);
   }
-  return statusMap;
+  return detailMap;
 }
+
+// ---------------------------------------------------------------------------
+// ISO 8601 duration → milliseconds (e.g. "PT3M45S" → 225000)
+// ---------------------------------------------------------------------------
+
+function parseISO8601Duration(iso: string): number | null {
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return null;
+  const hours = parseInt(match[1] || "0", 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  const seconds = parseInt(match[3] || "0", 10);
+  return (hours * 3600 + minutes * 60 + seconds) * 1000;
+}
+
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 function decodeHtmlEntities(text: string): string {
   return text
@@ -352,6 +546,12 @@ function applyHardFilters(title: string): string | null {
   if (lower.includes("tutorial") || lower.includes("lesson"))
     return "Tutorial/lesson content";
   return null;
+}
+
+function stripInternal(v: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...v };
+  delete result._adjustedScore;
+  return result;
 }
 
 function respond(body: unknown, status = 200): Response {
