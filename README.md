@@ -4,7 +4,7 @@ CoverSpot is a web app that connects to a user's Spotify account, syncs playlist
 
 ## Version
 
-Current documented release: `0.0.1` (MVP).
+Current documented release: `1.0.0` (MVP - Complete ✅).
 
 ## Core User Journey
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-03-26
+
 ### Added
 
 - **Playlist editor (3-column layout):** `LayoutShell`, `PlaylistSidebar`, and `TrackPanel` under `src/components/workspace/` -- full-viewport drill-down from playlists -> tracks -> variant discovery on `/dashboard`, reusing existing `VariantDiscoveryPanel`, `VariantCard`, preview players, mutations, and sync.
